@@ -547,7 +547,7 @@ export async function POST(req: NextRequest) {
     const content = await callGemini({
       systemPrompt,
       messages,
-      maxOutputTokens: body.mode === "holistic" ? 3000 : 600,
+      maxOutputTokens: body.mode === "holistic" ? 8192 : 600,
       apiKey,
       jsonMode: body.mode === "holistic",
     });

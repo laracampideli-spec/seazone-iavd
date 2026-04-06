@@ -31,8 +31,8 @@ describe("Migration validation: chat/route.ts", () => {
     expect(source).toContain('jsonMode: body.mode === "holistic"');
   });
 
-  it("uses maxOutputTokens 3000 for holistic, 600 otherwise", () => {
-    expect(source).toContain('body.mode === "holistic" ? 3000 : 600');
+  it("uses maxOutputTokens 8192 for holistic, 600 otherwise", () => {
+    expect(source).toContain('body.mode === "holistic" ? 8192 : 600');
   });
 
   it("still has fallbackResponse function", () => {

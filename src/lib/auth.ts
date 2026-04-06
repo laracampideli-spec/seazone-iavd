@@ -42,13 +42,18 @@ function findOrgUser(allUsers: ReturnType<typeof getAllUsers>, email: string, di
   return null;
 }
 
+// Only register Google provider when credentials are configured
+const providers = process.env.GOOGLE_CLIENT_ID
+  ? [
+      Google({
+        clientId: process.env.GOOGLE_CLIENT_ID,
+        clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      }),
+    ]
+  : [];
+
 export const { handlers, signIn, signOut, auth } = NextAuth({
-  providers: [
-    Google({
-      clientId: process.env.GOOGLE_CLIENT_ID,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    }),
-  ],
+  providers,
   pages: {
     signIn: "/login",
   },
