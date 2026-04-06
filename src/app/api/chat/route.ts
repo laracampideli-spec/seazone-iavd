@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { EvaluationType } from "@/lib/types";
+import { callGemini } from "@/lib/gemini";
 
 interface ScaleLevel {
   score: number;
@@ -519,7 +520,7 @@ ${question.scale.map((s) => `  Nota ${s.score} (${s.label}): ${s.description}\n 
 
 export async function POST(req: NextRequest) {
   const body: ChatRequest = await req.json();
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY;
 
   if (!apiKey || apiKey === "sua-chave-aqui") {
     return fallbackResponse(body);
@@ -528,30 +529,13 @@ export async function POST(req: NextRequest) {
   try {
     const { systemPrompt, messages } = buildMessages(body);
 
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: body.mode === "holistic" ? 2000 : 600,
-        system: systemPrompt,
-        messages,
-      }),
+    const content = await callGemini({
+      systemPrompt,
+      messages,
+      maxOutputTokens: body.mode === "holistic" ? 2000 : 600,
+      apiKey,
+      jsonMode: body.mode === "holistic",
     });
-
-    if (!response.ok) {
-      console.error("Anthropic API error:", response.status);
-      return fallbackResponse(body);
-    }
-
-    const data = await response.json();
-    const content =
-      data.content?.[0]?.text || "Desculpe, não consegui gerar uma resposta.";
-
     return NextResponse.json({ content });
   } catch (error) {
     console.error("Chat API error:", error);

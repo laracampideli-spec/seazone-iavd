@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { callGemini } from "@/lib/gemini";
 
 interface HelpRequest {
   message: string;
@@ -41,7 +42,7 @@ REGRAS:
 
 export async function POST(req: NextRequest) {
   const body: HelpRequest = await req.json();
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY;
 
   if (!apiKey || apiKey === "sua-chave-aqui") {
     return fallbackResponse(body);
@@ -49,31 +50,16 @@ export async function POST(req: NextRequest) {
 
   try {
     const messages = body.chatHistory.map((m) => ({
-      role: m.role,
+      role: m.role as "user" | "assistant",
       content: m.content,
     }));
 
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 300,
-        system: SYSTEM_PROMPT,
-        messages,
-      }),
+    const content = await callGemini({
+      systemPrompt: SYSTEM_PROMPT,
+      messages,
+      maxOutputTokens: 300,
+      apiKey,
     });
-
-    if (!response.ok) {
-      return fallbackResponse(body);
-    }
-
-    const data = await response.json();
-    const content = data.content?.[0]?.text || "Desculpe, não consegui responder.";
     return NextResponse.json({ content });
   } catch {
     return fallbackResponse(body);
