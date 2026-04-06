@@ -401,7 +401,8 @@ REGRAS DE RESPOSTA:
 - Se concordar E a justificativa for boa: suggestedGrade = currentGrade
 - Se discordar OU justificativa ruim: suggestedGrade = o que sugere, reasoning explica
 - Para conceito C: questione se TODAS forem C ou se a justificativa for inaceitável
-- Máximo 100 palavras por reasoning
+- QUANDO DISCORDAR: o reasoning DEVE referenciar o texto do avaliador e mostrar a diferença. Formato: (1) cite o trecho relevante da justificativa, (2) explique por que esse trecho sustenta a nota sugerida e não a nota dada, (3) dê um exemplo concreto do que seria esperado para a nota que o avaliador escolheu, dentro do contexto que ele descreveu. Ex: "Você mencionou que 'organizou reunião para alinhar o time'. Isso demonstra reação ao problema (nota C), não antecipação. Para nota B, seria esperado algo como 'antes do problema surgir, já havia mapeado o risco e criado plano de contingência' — dentro do mesmo contexto de alinhamento de time."
+- Máximo 150 palavras por reasoning
 - Reasoning em português (pt-BR)
 - A DECISÃO FINAL é do avaliador — você apenas analisa e sugere
 - Uma pessoa pode usar o MESMO exemplo em múltiplas perguntas — isso é válido`;
