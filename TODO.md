@@ -9,13 +9,14 @@ Backlog de melhorias e correções para a plataforma de Avaliação de Desempenh
 | 1 | Migrar LLM de Claude para Gemini | ✅ Concluído |
 | 2 | Garantir visibilidade de erros para o usuário | ⬚ Pendente |
 | 3 | Suportar ~250 usuários simultâneos | ⬚ Pendente |
-| 4 | Validação de notas por nível hierárquico | ⬚ Pendente |
-| 5 | LLM julgar justificativa por nível + critério avaliado | ⬚ Pendente |
-| 6 | Feedback ao usuário sobre o que falta na justificativa | ⬚ Pendente |
+| 4 | Validação de notas por nível hierárquico | ✅ Concluído |
+| 5 | LLM julgar justificativa por nível + critério avaliado | ✅ Concluído |
+| 6 | Feedback ao usuário sobre o que falta na justificativa | ✅ Concluído |
 | 7 | Backup seguro dos dados sem exposição indevida | ⬚ Pendente |
-| 8 | Diferenciar claramente nota A (5) de B (4) | ⬚ Pendente |
-| 9 | Diferenciar claramente nota D (2) de E (1) | ⬚ Pendente |
+| 8 | Diferenciar claramente nota A (5) de B (4) | ✅ Concluído |
+| 9 | Diferenciar claramente nota D (2) de E (1) | ✅ Concluído |
 | 10 | Funcionamento do sistema de quem avalia quem | ⬚ Pendente |
+| 11 | Visualização de histórico para observar evolução | ⬚ Pendente |
 
 ## Detalhes
 
@@ -47,9 +48,14 @@ Backlog de melhorias e correções para a plataforma de Avaliação de Desempenh
 - Integrar seções 1.2 a 13.2 do documento de calibração do CEO
 - Cada critério tem expectativas diferentes por nível
 
-### 6. Feedback ao usu��rio sobre o que falta na justificativa
+### 6. Feedback ao usuário sobre o que falta na justificativa
 - IA deve indicar gaps específicos: falta de exemplos, frequência, resultados
 - Guiar o avaliador a complementar a justificativa de forma ótima
+- **Bugs encontrados que devem ser corrigidos nesta task:**
+  - Feedback da IA é apenas sugestivo — usuário confirma sem ser obrigado a ajustar (`[id]/page.tsx:267-280`)
+  - Falha silenciosa de parse JSON → UI mostra "IA não encontrou problemas" (falso positivo) (`[id]/page.tsx:225-233`)
+  - Erros de API caem em fallback silencioso — usuário não sabe se recebeu IA real ou rule-based (`route.ts:540-543`)
+  - Modos `discuss`, `challenge`, `score`, `contest` existem na API mas nenhum componente do frontend os usa
 
 ### 7. Backup seguro dos dados sem exposição indevida
 - Estratégia de backup no Supabase

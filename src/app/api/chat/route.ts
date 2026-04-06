@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { EvaluationType } from "@/lib/types";
 import { callGemini } from "@/lib/gemini";
+import { resolveCeoLevel, buildHolisticLevelContext, buildEvaluationTypeContext } from "@/lib/calibration-utils";
 
 interface ScaleLevel {
   score: number;
@@ -48,6 +49,7 @@ interface ChatRequest {
   evaluatorSector?: string;
   evaluateeSector?: string;
   evaluateeCargo?: string;
+  evaluateeRole?: string;
   allAnswers?: HolisticAnswer[];
 }
 
@@ -353,7 +355,7 @@ Regras:
 
 // ── HOLISTIC PROMPT ──
 
-function getHolisticPrompt(evaluationType: EvaluationType): string {
+function getHolisticPrompt(evaluationType: EvaluationType, levelContext: string): string {
   const typeContext: Record<EvaluationType, string> = {
     gestor: "Esta é uma avaliação do GESTOR sobre seu liderado.",
     auto: "Esta é uma AUTOAVALIAÇÃO. Autoavaliações tendem a ser infladas.",
@@ -385,10 +387,15 @@ JUSTIFICATIVAS ACEITÁVEIS devem ter:
 - Frequência: "consistentemente", "nos últimos 3 meses", "sempre"
 
 ${CALIBRATION_RULES}
+${levelContext}
+
+DISTINÇÃO CRÍTICA A vs B: Nota A (5) é RARA (5%). Exige evidência de transformação, impacto extraordinário, referência para outros. Nota B (4) bem descrita NÃO é A. Se não tem impacto que muda o jogo, é B.
+DISTINÇÃO CRÍTICA D vs E: Nota E (1) exige ausência total ou passividade. Se a pessoa tentou mas precisou de muita ajuda, é D (2), não E. E (1) é "não fez", "desistiu", "transferiu responsabilidade".
 
 REGRAS DE RESPOSTA:
 - Retorne APENAS JSON válido, sem markdown, sem texto antes ou depois
-- Formato: { "feedback": [{ "questionId": "v1_q1", "currentGrade": "B", "suggestedGrade": "C", "reasoning": "..." }] }
+- Formato: { "feedback": [{ "questionId": "c1_sangue", "currentGrade": "B", "suggestedGrade": "C", "reasoning": "...", "missingElements": ["exemplo_concreto"] }] }
+- missingElements possíveis: ["exemplo_concreto", "resultado_mensuravel", "frequencia", "padrao_consistente", "impacto_no_nivel", "comparacao_nivel", "visibilidade_restrita"]. Incluir quando suggestedGrade != currentGrade ou justificativa insuficiente.
 - Inclua feedback para TODAS as perguntas com conceito diferente de C
 - Se a justificativa for vaga, genérica ou subjetiva: SEMPRE questione, MESMO que o conceito pareça adequado. Diga exatamente o que falta (ex: "A justificativa 'é legal' não descreve nenhum comportamento observável. Traga um exemplo concreto de quando essa pessoa demonstrou [competência]")
 - Se concordar E a justificativa for boa: suggestedGrade = currentGrade
@@ -416,10 +423,11 @@ function buildMessages(body: ChatRequest) {
     evaluatorSector,
     evaluateeSector,
     evaluateeCargo,
+    evaluateeRole,
   } = body;
 
   let systemPrompt: string;
-  if (mode === "holistic") systemPrompt = getHolisticPrompt(evaluationType);
+  if (mode === "holistic") systemPrompt = getHolisticPrompt(evaluationType, "");
   else if (mode === "challenge") systemPrompt = getChallengePrompt(evaluationType, chosenScore ?? 3);
   else if (mode === "score") systemPrompt = getScorePrompt(evaluationType);
   else if (mode === "contest") systemPrompt = getContestPrompt(evaluationType);
@@ -434,6 +442,11 @@ function buildMessages(body: ChatRequest) {
 
   // Holistic mode: build context from all answers
   if (mode === "holistic" && body.allAnswers) {
+    const ceoLevel = resolveCeoLevel(evaluateeCargo || "", evaluateeRole || "");
+    const levelContext = buildHolisticLevelContext(ceoLevel, body.allAnswers);
+    const evalTypeContext = buildEvaluationTypeContext(evaluationType);
+    systemPrompt = getHolisticPrompt(evaluationType, levelContext);
+
     const gradeMap: Record<number, string> = { 5: "A", 4: "B", 3: "C", 2: "D", 1: "E" };
     // Group by category
     const byCategory: Record<string, typeof body.allAnswers> = {};
@@ -445,6 +458,8 @@ function buildMessages(body: ChatRequest) {
     let holisticContext = `CONTEXTO DA AVALIAÇÃO:
 - Tipo: ${typeLabels[evaluationType]}
 - Colaborador avaliado: ${employeeName}${evaluateeCargo ? ` (${evaluateeCargo})` : ""}${evaluateeSector ? ` — Setor: ${evaluateeSector}` : ""}${evaluatorSector ? `\n- Setor do avaliador: ${evaluatorSector}` : ""}
+- Nível hierárquico: ${ceoLevel}
+${evalTypeContext}
 
 TODAS AS RESPOSTAS (${body.allAnswers.length} perguntas):
 `;
@@ -532,11 +547,11 @@ export async function POST(req: NextRequest) {
     const content = await callGemini({
       systemPrompt,
       messages,
-      maxOutputTokens: body.mode === "holistic" ? 2000 : 600,
+      maxOutputTokens: body.mode === "holistic" ? 3000 : 600,
       apiKey,
       jsonMode: body.mode === "holistic",
     });
-    return NextResponse.json({ content });
+    return NextResponse.json({ content, _source: "ai" });
   } catch (error) {
     console.error("Chat API error:", error);
     return fallbackResponse(body);
@@ -574,7 +589,7 @@ function fallbackResponse(body: ChatRequest) {
           reasoning: `Todas (ou quase todas) as respostas são C. Isso pode indicar que a avaliação foi feita sem reflexão profunda. Há alguma competência em que ${employeeName} se destaca positivamente ou precisa melhorar? Considere se realmente não há diferenças entre as competências.`,
         });
       }
-      return NextResponse.json({ content: JSON.stringify({ feedback }) });
+      return NextResponse.json({ content: JSON.stringify({ feedback }), _source: "fallback" });
     }
 
     for (const ans of body.allAnswers) {
@@ -652,7 +667,7 @@ function fallbackResponse(body: ChatRequest) {
       }
     }
 
-    return NextResponse.json({ content: JSON.stringify({ feedback }) });
+    return NextResponse.json({ content: JSON.stringify({ feedback }), _source: "fallback" });
   }
 
   const userMessages = chatHistory.filter((m) => m.role === "user");
@@ -721,7 +736,7 @@ function fallbackResponse(body: ChatRequest) {
       response += `Para nota ${above.score}, seria necessário: "${above.description}"`;
     }
 
-    return NextResponse.json({ content: response });
+    return NextResponse.json({ content: response, _source: "fallback" });
   }
 
   if (mode === "contest") {
@@ -737,6 +752,7 @@ function fallbackResponse(body: ChatRequest) {
           `O exemplo que você trouxe agora é relevante — especialmente a parte sobre autonomia. Reavaliando:\n\n` +
           `**Nota: 4 — Acima do esperado**\n\n` +
           `Se ${employeeName} faz isso de forma consistente e sem demandar acompanhamento, a nota 4 é justa.`,
+        _source: "fallback",
       });
     }
 
@@ -749,6 +765,7 @@ function fallbackResponse(body: ChatRequest) {
           `• **Consistência**: acontece sempre ou foi um episódio?\n` +
           `• **Impacto além do escopo**: eleva o nível de outros?\n\n` +
           `Se tiver evidência nesses 3 pontos, posso reavaliar.`,
+        _source: "fallback",
       });
     }
 
@@ -760,6 +777,7 @@ function fallbackResponse(body: ChatRequest) {
         `• **Evidência de autonomia**\n` +
         `• **Impacto mensurável**\n\n` +
         `Tem algum fato novo?`,
+      _source: "fallback",
     });
   }
 
@@ -774,16 +792,19 @@ function fallbackResponse(body: ChatRequest) {
       if (isVague) {
         return NextResponse.json({
           content: `Você deu conceito **${grade}** para **${employeeName}**. A maioria das pessoas é conceito C (dentro do esperado).\n\nPreciso de **exemplos concretos e recentes** que justifiquem esse conceito. O que aconteceu nos últimos 6 meses que levou a essa avaliação?`,
+          _source: "fallback",
         });
       }
 
       if (chosenScore > 3) {
         return NextResponse.json({
           content: `Entendi sua justificativa. Conceito **${grade}** exige desempenho **acima** do esperado — não basta ser bom, precisa ser excepcional.\n\nPergunto: **${employeeName}** faz isso de forma **autônoma e consistente**? Ou foi algo pontual?`,
+          _source: "fallback",
         });
       } else {
         return NextResponse.json({
           content: `Entendi sua justificativa. Conceito **${grade}** indica desempenho **abaixo** do esperado — isso é significativo.\n\nConfirme: esse comportamento é **consistente** ou foi uma situação pontual?`,
+          _source: "fallback",
         });
       }
     }
@@ -796,16 +817,19 @@ function fallbackResponse(body: ChatRequest) {
       if (hasExamples && isDetailed) {
         return NextResponse.json({
           content: `Os exemplos que você trouxe são relevantes. Na minha análise, o conceito **${grade}** ${chosenScore > 3 ? "pode ser" : "é"} justificável com base nessas evidências.\n\nSe está seguro, pode **confirmar o conceito ${grade}**.`,
+          _source: "fallback",
         });
       }
 
       return NextResponse.json({
         content: `Na minha análise, os exemplos apresentados apontam mais para **conceito C** (dentro do esperado). Para conceito ${grade}, eu esperaria evidências mais concretas de ${chosenScore > 3 ? "proatividade e impacto acima do cargo" : "um padrão claro de comportamento negativo"}.\n\n**Você tem certeza que quer manter conceito ${grade}?** Se sim, pode confirmar.`,
+        _source: "fallback",
       });
     }
 
     return NextResponse.json({
       content: `Entendido. A decisão é sua. Se está ciente e quer manter conceito **${grade}**, pode **confirmar** agora.`,
+      _source: "fallback",
     });
   }
 
@@ -840,6 +864,7 @@ function fallbackResponse(body: ChatRequest) {
     const prompts = firstQuestions[evaluationType];
     return NextResponse.json({
       content: isVague ? prompts.vague : prompts.detailed,
+      _source: "fallback",
     });
   }
 
@@ -850,6 +875,7 @@ function fallbackResponse(body: ChatRequest) {
           `Ponto importante: nas respostas anteriores, foi mencionado que ${employeeName} precisa de acompanhamento da liderança. ` +
           `Isso é consistente com o que você está descrevendo aqui?\n\n` +
           `Quando estiver pronto, clique em **"Receber nota da IA"**.`,
+        _source: "fallback",
       });
     }
 
@@ -858,10 +884,12 @@ function fallbackResponse(body: ChatRequest) {
         `Último ponto: com que **frequência** isso acontece? ` +
         `É o comportamento padrão de ${employeeName} ou foi algo pontual?\n\n` +
         `Quando estiver pronto, clique em **"Receber nota da IA"**.`,
+      _source: "fallback",
     });
   }
 
   return NextResponse.json({
     content: `Tenho contexto suficiente. Clique em **"Receber nota da IA"** para eu consolidar minha avaliação.`,
+    _source: "fallback",
   });
 }
