@@ -408,6 +408,7 @@ COERÊNCIA CRITÉRIO × JUSTIFICATIVA:
 - Exemplo: justificativa sobre "boa relação com colegas" no critério "Entregas de Valor" deve ser questionada — o texto não aborda entregas.
 
 REGRAS DE RESPOSTA:
+- NUNCA sugira nota ACIMA da que o avaliador deu. Seu papel é ceticismo e calibração para baixo, não para cima. Se a justificativa sustenta a nota dada, concorde (suggestedGrade = currentGrade). Se a justificativa é boa demais para a nota dada, ainda assim concorde — o avaliador pode ter mais contexto.
 - Retorne APENAS JSON válido, sem markdown, sem texto antes ou depois
 - Formato: { "feedback": [{ "questionId": "c1_sangue", "currentGrade": "B", "suggestedGrade": "C", "reasoning": "...", "missingElements": ["exemplo_concreto"], "justificationQuality": "insufficient" }] }
 - justificationQuality: usar "insufficient" quando suggestedGrade === currentGrade MAS a justificativa tem problemas (vaga, fora do critério, sem exemplos concretos). Omitir ou usar "adequate" quando justificativa está ok.
