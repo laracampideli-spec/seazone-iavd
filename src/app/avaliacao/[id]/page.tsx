@@ -15,6 +15,7 @@ import {
   Loader2,
   Send,
   RefreshCw,
+  AlertTriangle,
 } from "lucide-react";
 
 // Mapeamento: nota interna 1-5 ↔ conceito A-E (A=melhor, E=pior)
@@ -52,6 +53,7 @@ interface AIFeedbackItem {
   suggestedGrade: string;
   reasoning: string;
   missingElements?: string[];
+  justificationQuality?: "insufficient" | "adequate";
 }
 
 const MISSING_ELEMENT_LABELS: Record<string, string> = {
@@ -295,11 +297,12 @@ export default function AvaliacaoPage({
     }
 
     // Enforce resolution of AI objections
-    const unresolvedCount = Object.entries(aiFeedback).filter(([qId, fb]) =>
-      fb.suggestedGrade !== fb.currentGrade && !resolvedByUser.has(qId)
-    ).length;
+    const unresolvedCount = Object.entries(aiFeedback).filter(([qId, fb]) => {
+      if (resolvedByUser.has(qId)) return false;
+      return fb.suggestedGrade !== fb.currentGrade || fb.justificationQuality === "insufficient";
+    }).length;
     if (unresolvedCount > 0) {
-      alert(`A IA tem ${unresolvedCount} objeção(ões) não resolvida(s). Revise as notas ou clique em "Manter minha nota" para cada uma.`);
+      alert(`A IA tem ${unresolvedCount} objeção(ões) não resolvida(s). Revise as notas/justificativas ou clique em "Manter" para cada uma.`);
       return;
     }
 
@@ -483,27 +486,51 @@ export default function AvaliacaoPage({
 
                       {/* AI feedback inline */}
                       {feedback && (() => {
-                        const agrees = feedback.suggestedGrade === feedback.currentGrade;
+                        const gradeAgrees = feedback.suggestedGrade === feedback.currentGrade;
+                        const justificationQuestioned = gradeAgrees && feedback.justificationQuality === "insufficient";
+                        const fullyAgrees = gradeAgrees && !justificationQuestioned;
                         return (
                           <div className={`mt-4 p-4 rounded-lg border ${
-                            agrees
+                            fullyAgrees
                               ? "bg-emerald-50 border-emerald-200"
+                              : justificationQuestioned
+                              ? "bg-yellow-50 border-yellow-300"
                               : "bg-amber-50 border-amber-200"
                           }`}>
                             <div className="flex items-start gap-2">
-                              <Bot className={`w-4 h-4 mt-0.5 shrink-0 ${agrees ? "text-emerald-600" : "text-amber-600"}`} />
+                              {justificationQuestioned ? (
+                                <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-yellow-500" />
+                              ) : (
+                                <Bot className={`w-4 h-4 mt-0.5 shrink-0 ${fullyAgrees ? "text-emerald-600" : "text-amber-600"}`} />
+                              )}
                               <div>
                                 <div className="flex items-center gap-2 mb-1">
-                                  <span className={`text-xs font-semibold ${agrees ? "text-emerald-700" : "text-amber-700"}`}>
-                                    {agrees ? "IA concorda" : "IA questiona"}
+                                  <span className={`text-xs font-semibold ${
+                                    fullyAgrees
+                                      ? "text-emerald-700"
+                                      : justificationQuestioned
+                                      ? "text-yellow-700"
+                                      : "text-amber-700"
+                                  }`}>
+                                    {fullyAgrees
+                                      ? "IA concorda"
+                                      : justificationQuestioned
+                                      ? "IA aceita nota, questiona justificativa"
+                                      : "IA questiona nota"}
                                   </span>
-                                  {!agrees && (
+                                  {!gradeAgrees && (
                                     <span className="text-xs px-2 py-0.5 bg-amber-200 text-amber-800 rounded-full font-medium">
                                       Sugere: {feedback.suggestedGrade}
                                     </span>
                                   )}
                                 </div>
-                                <p className={`text-sm leading-relaxed ${agrees ? "text-emerald-900" : "text-amber-900"}`}>
+                                <p className={`text-sm leading-relaxed ${
+                                  fullyAgrees
+                                    ? "text-emerald-900"
+                                    : justificationQuestioned
+                                    ? "text-yellow-900"
+                                    : "text-amber-900"
+                                }`}>
                                   {feedback.reasoning}
                                 </p>
                                 {feedback.missingElements && feedback.missingElements.length > 0 && (
@@ -515,18 +542,22 @@ export default function AvaliacaoPage({
                                     ))}
                                   </div>
                                 )}
-                                {!agrees && (
+                                {(justificationQuestioned || !gradeAgrees) && (
                                   <>
                                     {!resolvedByUser.has(questions[index]?.id || "") ? (
                                       <button
                                         onClick={() => setResolvedByUser(prev => new Set([...prev, questions[index]?.id || ""]))}
                                         className="mt-2 text-xs text-amber-700 underline hover:no-underline"
                                       >
-                                        Manter minha nota e prosseguir
+                                        {justificationQuestioned
+                                          ? "Manter minha justificativa e prosseguir"
+                                          : "Manter minha nota e prosseguir"}
                                       </button>
                                     ) : (
                                       <p className="mt-2 text-xs text-gray-500 italic">
-                                        Você optou por manter o conceito {feedback.currentGrade}. IA sugeriu {feedback.suggestedGrade}.
+                                        {justificationQuestioned
+                                          ? "Você optou por manter a justificativa atual."
+                                          : `Você optou por manter o conceito ${feedback.currentGrade}. IA sugeriu ${feedback.suggestedGrade}.`}
                                       </p>
                                     )}
                                   </>

@@ -409,12 +409,14 @@ COERÊNCIA CRITÉRIO × JUSTIFICATIVA:
 
 REGRAS DE RESPOSTA:
 - Retorne APENAS JSON válido, sem markdown, sem texto antes ou depois
-- Formato: { "feedback": [{ "questionId": "c1_sangue", "currentGrade": "B", "suggestedGrade": "C", "reasoning": "...", "missingElements": ["exemplo_concreto"] }] }
+- Formato: { "feedback": [{ "questionId": "c1_sangue", "currentGrade": "B", "suggestedGrade": "C", "reasoning": "...", "missingElements": ["exemplo_concreto"], "justificationQuality": "insufficient" }] }
+- justificationQuality: usar "insufficient" quando suggestedGrade === currentGrade MAS a justificativa tem problemas (vaga, fora do critério, sem exemplos concretos). Omitir ou usar "adequate" quando justificativa está ok.
 - missingElements possíveis: ["exemplo_concreto", "resultado_mensuravel", "frequencia", "padrao_consistente", "impacto_no_nivel", "comparacao_nivel", "visibilidade_restrita"]. Incluir quando suggestedGrade != currentGrade ou justificativa insuficiente.
 - Inclua feedback para TODAS as perguntas com conceito diferente de C
 - Se a justificativa for vaga, genérica ou subjetiva: SEMPRE questione, MESMO que o conceito pareça adequado. Diga exatamente o que falta (ex: "A justificativa 'é legal' não descreve nenhum comportamento observável. Traga um exemplo concreto de quando essa pessoa demonstrou [competência]")
-- Se concordar E a justificativa for boa: suggestedGrade = currentGrade
-- Se discordar OU justificativa ruim: suggestedGrade = o que sugere, reasoning explica
+- Se concordar com nota E justificativa boa: suggestedGrade = currentGrade (omitir justificationQuality)
+- Se discordar com a NOTA: suggestedGrade = o que sugere, reasoning explica
+- Se concordar com a NOTA mas justificativa insuficiente (vaga, fora do critério, sem exemplos): suggestedGrade = currentGrade, justificationQuality = "insufficient", missingElements preenchido — INCLUIR este item no feedback obrigatoriamente
 - Para conceito C: questione se TODAS forem C ou se a justificativa for inaceitável
 - QUANDO DISCORDAR: seja INSTRUTIVO, não imperativo. O reasoning deve ajudar o avaliador a entender a diferença e melhorar. Use este formato compacto:
   → "Você escreveu: '[trecho curto]'. Isso sustenta nota [sugerida] porque [razão em 1 frase]. Para nota [dada pelo avaliador], esperaríamos algo como: '[exemplo concreto curto no contexto do avaliador]'."
