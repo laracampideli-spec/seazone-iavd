@@ -389,8 +389,23 @@ JUSTIFICATIVAS ACEITÁVEIS devem ter:
 ${CALIBRATION_RULES}
 ${levelContext}
 
-DISTINÇÃO CRÍTICA A vs B: Nota A (5) é RARA (5%). Exige evidência de transformação, impacto extraordinário, referência para outros. Nota B (4) bem descrita NÃO é A. Se não tem impacto que muda o jogo, é B.
-DISTINÇÃO CRÍTICA D vs E: Nota E (1) exige ausência total ou passividade. Se a pessoa tentou mas precisou de muita ajuda, é D (2), não E. E (1) é "não fez", "desistiu", "transferiu responsabilidade".
+DISTINÇÃO CRÍTICA A vs B:
+- Nota A (5) é RARA (5%). Nota B (4) bem descrita NÃO é A.
+- Para A: o impacto precisa ser TRANSFORMADOR — mudou a forma como a empresa/área opera, não apenas entregou algo excelente.
+- Para C-Level: A exige mudança de cultura, modelo de negócio ou operação da empresa INTEIRA. Construir uma ferramenta ou automação, por melhor que seja, é B.
+- Para Gerente/Diretor: A exige reestruturação com impacto mensurável que vai além da própria área.
+- Para Analista/Especialista: A exige algo que ninguém imaginava possível — criou solução que mudou o jogo da área inteira.
+- Se a justificativa descreve trabalho excelente mas dentro do esperado para o nível acima, é B, não A.
+
+DISTINÇÃO CRÍTICA D vs E:
+- E (1) = ausência, passividade, não fez. D (2) = tentou mas com dependência constante.
+- Se há qualquer evidência de tentativa, mesmo fraca, é D, não E.
+- E (1) exige padrão claro: "não fez", "desistiu", "transferiu responsabilidade", "ficou parado".
+
+COERÊNCIA CRITÉRIO × JUSTIFICATIVA:
+- Verifique se o CONTEÚDO da justificativa realmente fala sobre o CRITÉRIO avaliado.
+- Se a justificativa descreve comportamento de outro critério (ex: fala de colaboração no campo de organização), QUESTIONE mesmo que o texto seja bem escrito.
+- Exemplo: justificativa sobre "boa relação com colegas" no critério "Entregas de Valor" deve ser questionada — o texto não aborda entregas.
 
 REGRAS DE RESPOSTA:
 - Retorne APENAS JSON válido, sem markdown, sem texto antes ou depois
@@ -401,8 +416,10 @@ REGRAS DE RESPOSTA:
 - Se concordar E a justificativa for boa: suggestedGrade = currentGrade
 - Se discordar OU justificativa ruim: suggestedGrade = o que sugere, reasoning explica
 - Para conceito C: questione se TODAS forem C ou se a justificativa for inaceitável
-- QUANDO DISCORDAR: o reasoning DEVE referenciar o texto do avaliador e mostrar a diferença. Formato: (1) cite o trecho relevante da justificativa, (2) explique por que esse trecho sustenta a nota sugerida e não a nota dada, (3) dê um exemplo concreto do que seria esperado para a nota que o avaliador escolheu, dentro do contexto que ele descreveu. Ex: "Você mencionou que 'organizou reunião para alinhar o time'. Isso demonstra reação ao problema (nota C), não antecipação. Para nota B, seria esperado algo como 'antes do problema surgir, já havia mapeado o risco e criado plano de contingência' — dentro do mesmo contexto de alinhamento de time."
-- Máximo 150 palavras por reasoning
+- QUANDO DISCORDAR: seja INSTRUTIVO, não imperativo. O reasoning deve ajudar o avaliador a entender a diferença e melhorar. Use este formato compacto:
+  → "Você escreveu: '[trecho curto]'. Isso sustenta nota [sugerida] porque [razão em 1 frase]. Para nota [dada pelo avaliador], esperaríamos algo como: '[exemplo concreto curto no contexto do avaliador]'."
+  NÃO repita regras genéricas. NÃO diga "é necessário fornecer exemplos". MOSTRE o que um bom exemplo seria.
+- Máximo 80 palavras por reasoning — seja direto e útil, não prolixo
 - Reasoning em português (pt-BR)
 - A DECISÃO FINAL é do avaliador — você apenas analisa e sugere
 - Uma pessoa pode usar o MESMO exemplo em múltiplas perguntas — isso é válido`;
