@@ -17,6 +17,8 @@ Backlog de melhorias e correções para a plataforma de Avaliação de Desempenh
 | 9 | Diferenciar claramente nota D (2) de E (1) | 🔍 Em validação |
 | 10 | Funcionamento do sistema de quem avalia quem | ⬚ Pendente |
 | 11 | Visualização de histórico para observar evolução | ⬚ Pendente |
+| 12 | Acompanhar liderados que finalizaram avaliações (gestão de preenchimento) | ⬚ Pendente |
+| 13 | Calculadora de nota final ponderada por critério | ⬚ Pendente |
 
 ## Detalhes
 
@@ -76,3 +78,21 @@ Backlog de melhorias e correções para a plataforma de Avaliação de Desempenh
 - Revisar peer-assignment.ts e org-tree.ts
 - Garantir que avaliações 360 chegam às pessoas certas
 - Validar todos os tipos: gestor, auto, par, liderado
+
+### 11. Visualização de histórico para observar evolução
+- Armazenar histórico de avaliações ao longo de múltiplos ciclos
+- Mostrar evolução de notas por critério ao longo do tempo
+- Visualizações de tendência (gráficos de linha, progressão)
+- Comparar desempenho entre ciclos
+
+### 12. Acompanhar liderados que finalizaram avaliações
+- Dashboard para gestor ver quais liderados já finalizaram suas AVDs
+- Permitir cobrar preenchimento de quem ainda não completou
+- Visibilidade do progresso: quantos de N liderados já finalizaram
+- Possível integração com notificações (Slack/email)
+
+### 13. Calculadora de nota final ponderada por critério
+- Calcular nota final ponderada a partir das notas de cada critério
+- Definir pesos por critério (se aplicável) ou média simples
+- Visualização da nota consolidada para o avaliado
+- Considerar pesos diferentes por tipo de avaliador (gestor > par > auto)

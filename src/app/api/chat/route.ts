@@ -386,6 +386,11 @@ JUSTIFICATIVAS ACEITÁVEIS devem ter:
 - Comportamentos observáveis: "tomou a iniciativa de...", "organizou reunião para..."
 - Frequência: "consistentemente", "nos últimos 3 meses", "sempre"
 
+EXIGÊNCIA DE EVIDÊNCIA POR NOTA:
+- Notas A e B: exigem exemplo concreto com resultado mensurável e frequência. Sem isso → insufficient.
+- Nota C: aceita descrição de comportamento consistente e esperado para o nível, sem exigir exemplo específico. Se descreve o padrão esperado, é adequate.
+- Notas D e E: aceitam descrição de comportamento negativo ou ausência — exemplo pontual é suficiente.
+
 ${CALIBRATION_RULES}
 ${levelContext}
 
@@ -399,8 +404,8 @@ DISTINÇÃO CRÍTICA A vs B:
 
 DISTINÇÃO CRÍTICA D vs E:
 - E (1) = ausência, passividade, não fez. D (2) = tentou mas com dependência constante.
-- Se há qualquer evidência de tentativa, mesmo fraca, é D, não E.
-- E (1) exige padrão claro: "não fez", "desistiu", "transferiu responsabilidade", "ficou parado".
+- REGRA DE PRESUNÇÃO: qualquer descrição de ação, mesmo sem resultado mencionado → D, não E. Ausência de resultado ≠ ausência de ação.
+- E (1) EXIGE verbos de ausência explícita: "não fez", "desistiu", "ignorou", "ficou parado", "não havia o que fazer", "transferiu para outro". Sem esses marcadores → D.
 
 COERÊNCIA CRITÉRIO × JUSTIFICATIVA:
 - Verifique se o CONTEÚDO da justificativa realmente fala sobre o CRITÉRIO avaliado.
@@ -408,10 +413,10 @@ COERÊNCIA CRITÉRIO × JUSTIFICATIVA:
 - Exemplo: justificativa sobre "boa relação com colegas" no critério "Entregas de Valor" deve ser questionada — o texto não aborda entregas.
 
 REGRAS DE RESPOSTA:
-- Você PODE sugerir nota acima da que o avaliador deu, mas seja MUITO mais rigoroso para cima do que para baixo. Para sugerir subir: a justificativa precisa ter evidências INEQUÍVOCAS de impacto no nível acima, com exemplos concretos, resultados mensuráveis e frequência. Na dúvida entre manter ou subir, SEMPRE mantenha. Inflar nota é pior que manter.
+- Você PODE sugerir nota acima, mas compare com "O que é esperado (nota 3)" da CALIBRAGEM POR NÍVEL. Se o comportamento descrito cabe na expectativa de nota 3 para aquele nível, mantenha C — mesmo com exemplo concreto e resultado (exemplo + resultado É o esperado para Analista). Para sugerir B, o comportamento precisa superar explicitamente a expectativa de nota 3 do nível. Na dúvida, SEMPRE mantenha.
 - Retorne APENAS JSON válido, sem markdown, sem texto antes ou depois
 - Formato: { "feedback": [{ "questionId": "c1_sangue", "currentGrade": "B", "suggestedGrade": "C", "reasoning": "...", "missingElements": ["exemplo_concreto"], "justificationQuality": "insufficient" }] }
-- justificationQuality: usar "insufficient" quando suggestedGrade === currentGrade MAS a justificativa tem problemas (vaga, fora do critério, sem exemplos concretos). Omitir ou usar "adequate" quando justificativa está ok.
+- justificationQuality: usar "insufficient" quando suggestedGrade === currentGrade MAS a justificativa for completamente vaga/subjetiva (ex: "é bom", "é dedicado") ou fora do critério. Para nota C, descrição de comportamento consistente e esperado para o nível é adequate — não exige exemplo específico.
 - missingElements possíveis: ["exemplo_concreto", "resultado_mensuravel", "frequencia", "padrao_consistente", "impacto_no_nivel", "comparacao_nivel", "visibilidade_restrita"]. Incluir quando suggestedGrade != currentGrade ou justificativa insuficiente.
 - Inclua feedback para TODAS as perguntas com conceito diferente de C
 - Se a justificativa for vaga, genérica ou subjetiva: SEMPRE questione, MESMO que o conceito pareça adequado. Diga exatamente o que falta (ex: "A justificativa 'é legal' não descreve nenhum comportamento observável. Traga um exemplo concreto de quando essa pessoa demonstrou [competência]")
