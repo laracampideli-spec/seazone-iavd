@@ -1,77 +1,52 @@
 import { users } from "@/data/users";
-import { sectors } from "@/data/sectors";
+import { getManager, getSubordinates } from "./org-tree";
 
 export interface PeerAssignment {
   evaluatorId: string;
   evaluateeId: string;
+  /**
+   * true when this pair was assigned via the fallback rule:
+   * "liderado de um par da liderança direta".
+   * Should be visible in admin UI and flagged in reports.
+   */
+  isFallback?: boolean;
 }
 
-// Build lookups
-const sectorParent = new Map(sectors.map((s) => [s.name, s.parentSector]));
-const sectorByName = new Map(sectors.map((s) => [s.name, s]));
+// Pre-compute manager IDs at module load (stable for a given cycle)
+const managerIdOf = new Map<string, string | null>();
+for (const u of users) {
+  const mgr = getManager(u.id);
+  managerIdOf.set(u.id, mgr?.id ?? null);
+}
 
-const childSectors = new Map<string, string[]>();
-for (const s of sectors) {
-  if (s.parentSector) {
-    const list = childSectors.get(s.parentSector) || [];
-    list.push(s.name);
-    childSectors.set(s.parentSector, list);
+// Group users by managerId for fast lookup
+const usersByManager = new Map<string, string[]>();
+for (const u of users) {
+  const mid = managerIdOf.get(u.id);
+  if (mid) {
+    const list = usersByManager.get(mid) ?? [];
+    list.push(u.id);
+    usersByManager.set(mid, list);
   }
 }
 
-// Who is responsável of which sectors
-const responsavelSectors = new Map<string, string[]>();
-for (const s of sectors) {
-  const list = responsavelSectors.get(s.responsavelName) || [];
-  list.push(s.name);
-  responsavelSectors.set(s.responsavelName, list);
+// Group users by sector for fast lookup
+const usersBySector = new Map<string, string[]>();
+for (const u of users) {
+  const list = usersBySector.get(u.sector) ?? [];
+  list.push(u.id);
+  usersBySector.set(u.sector, list);
 }
 
-const userById = new Map(users.map((u) => [u.id, u]));
-const userByName = new Map(users.map((u) => [u.name, u]));
-
-// Setores isolados
-const ISOLATED_SECTORS = new Set(["Estagiários", "Jovens Talentos"]);
-
-/** Check if a user is responsável of any sector */
-function isResponsavel(userId: string): boolean {
-  const user = userById.get(userId);
-  if (!user) return false;
-  return (responsavelSectors.get(user.name) || []).length > 0;
-}
-
-/** Get the highest-level sector a responsável leads (least nested) */
-function getHighestSector(userId: string): typeof sectors[0] | null {
-  const user = userById.get(userId);
-  if (!user) return null;
-  const sectorNames = responsavelSectors.get(user.name) || [];
-  if (sectorNames.length === 0) return null;
-
-  // Calculate depth for each sector
-  function depth(sectorName: string): number {
-    let d = 0;
-    let current = sectorByName.get(sectorName);
-    while (current?.parentSector) {
-      d++;
-      current = sectorByName.get(current.parentSector);
-    }
-    return d;
+function hashStr(s: string): number {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) {
+    h = ((h << 5) + h + s.charCodeAt(i)) & 0x7fffffff;
   }
-
-  // Return sector with minimum depth (highest in hierarchy)
-  let best = sectorByName.get(sectorNames[0])!;
-  let bestDepth = depth(sectorNames[0]);
-  for (let i = 1; i < sectorNames.length; i++) {
-    const d = depth(sectorNames[i]);
-    if (d < bestDepth) {
-      best = sectorByName.get(sectorNames[i])!;
-      bestDepth = d;
-    }
-  }
-  return best;
+  return h;
 }
 
-/** Deterministic shuffle */
+/** Deterministic shuffle using a linear congruential generator */
 function seededShuffle<T>(arr: T[], seed: number): T[] {
   const result = [...arr];
   let s = seed;
@@ -84,71 +59,110 @@ function seededShuffle<T>(arr: T[], seed: number): T[] {
 }
 
 /**
- * Generate peer assignments for the entire company.
+ * Primary peer pool for a user:
+ * - People with the same sector (same immediate team)
+ * - OR people with the same direct manager (common leadership)
  *
- * Rules:
- * - If person is RESPONSÁVEL of a sector: peers = other responsáveis of sibling sectors (same level)
- * - If person is NOT responsável (analyst): peers = other people in the SAME sector (same team)
- * - Isolated sectors (Estagiários, Jovens Talentos): peers only within themselves
- * - Each person evaluates exactly 2 peers (when pool allows)
- * - Everyone receives at least 1 peer evaluation
+ * Excludes: self, direct manager, direct subordinates.
+ *
+ * Rule: "pessoas com o mesmo departamento ou com uma liderança em comum"
  */
-export function generatePeerAssignments(seed: number = 42): PeerAssignment[] {
-  const assignments: PeerAssignment[] = [];
-  const peerGroups = new Map<string, string[]>();
+function buildPrimaryPeerPool(userId: string): string[] {
+  const user = users.find((u) => u.id === userId);
+  if (!user) return [];
 
-  for (const user of users) {
-    if (ISOLATED_SECTORS.has(user.sector)) {
-      // Isolated: peers within same sector only
-      const groupKey = `isolated:${user.sector}`;
-      const group = peerGroups.get(groupKey) || [];
-      group.push(user.id);
-      peerGroups.set(groupKey, group);
-      continue;
-    }
+  const managerId = managerIdOf.get(userId) ?? null;
+  const directSubIds = new Set(getSubordinates(userId).map((s) => s.id));
 
-    if (isResponsavel(user.id)) {
-      // Responsável: peers = other responsáveis of sibling sectors
-      // Use the highest-level sector this person leads (not their listed sector)
-      const sector = getHighestSector(user.id);
-      if (!sector?.parentSector) continue;
+  const isExcluded = (id: string) =>
+    id === userId || id === managerId || directSubIds.has(id);
 
-      const groupKey = `resp:${sector.parentSector}`;
-      const group = peerGroups.get(groupKey) || [];
-      group.push(user.id);
-      peerGroups.set(groupKey, group);
-    } else {
-      // Non-responsável: peers = other people in the same sector (same team)
-      const groupKey = `team:${user.sector}`;
-      const group = peerGroups.get(groupKey) || [];
-      group.push(user.id);
-      peerGroups.set(groupKey, group);
+  const pool = new Set<string>();
+
+  // Same sector (same team)
+  for (const id of usersBySector.get(user.sector) ?? []) {
+    if (!isExcluded(id)) pool.add(id);
+  }
+
+  // Same manager (common leadership)
+  if (managerId) {
+    for (const id of usersByManager.get(managerId) ?? []) {
+      if (!isExcluded(id)) pool.add(id);
     }
   }
 
-  for (const [groupKey, memberIds] of peerGroups) {
-    if (memberIds.length <= 1) continue;
+  return [...pool];
+}
 
-    const shuffled = seededShuffle(memberIds, seed + groupKey.length);
+/**
+ * Fallback peer pool:
+ * Subordinates of the manager's peers.
+ *
+ * Rule: "liderado de um par da sua liderança direta"
+ * Only used when fewer than 2 primary peers exist.
+ */
+function buildFallbackPeerPool(userId: string, alreadyPicked: Set<string>): string[] {
+  const managerId = managerIdOf.get(userId) ?? null;
+  if (!managerId) return [];
 
-    if (memberIds.length === 2) {
-      assignments.push({ evaluatorId: shuffled[0], evaluateeId: shuffled[1] });
-      assignments.push({ evaluatorId: shuffled[1], evaluateeId: shuffled[0] });
-      continue;
+  // Peers of the manager (using same primary logic)
+  const managerPeers = buildPrimaryPeerPool(managerId);
+
+  const fallback = new Set<string>();
+  for (const peerId of managerPeers) {
+    for (const sub of getSubordinates(peerId)) {
+      if (sub.id !== userId && !alreadyPicked.has(sub.id)) {
+        fallback.add(sub.id);
+      }
+    }
+  }
+
+  return [...fallback];
+}
+
+/**
+ * Generate peer evaluation assignments for the entire company.
+ *
+ * Each person is assigned exactly 2 peers to evaluate (when pool allows):
+ *
+ * 1. Primary pool: same sector OR same direct manager
+ * 2. Fallback (isFallback=true): subordinate of a peer of their direct manager
+ *    — only when primary pool has fewer than 2 people
+ *
+ * Assignments are deterministic: same seed → same output.
+ */
+export function generatePeerAssignments(seed: number = 42): PeerAssignment[] {
+  const assignments: PeerAssignment[] = [];
+
+  for (const user of users) {
+    const userSeed = seed ^ hashStr(user.id);
+
+    const primary = buildPrimaryPeerPool(user.id);
+    const shuffledPrimary = seededShuffle(primary, userSeed);
+
+    const picked: PeerAssignment[] = [];
+
+    // Take up to 2 from primary pool
+    for (let i = 0; i < Math.min(2, shuffledPrimary.length); i++) {
+      picked.push({ evaluatorId: user.id, evaluateeId: shuffledPrimary[i] });
     }
 
-    // Circular: person[i] evaluates person[(i+1)] and person[(i+2)]
-    const n = shuffled.length;
-    for (let i = 0; i < n; i++) {
-      assignments.push({
-        evaluatorId: shuffled[i],
-        evaluateeId: shuffled[(i + 1) % n],
-      });
-      assignments.push({
-        evaluatorId: shuffled[i],
-        evaluateeId: shuffled[(i + 2) % n],
-      });
+    // Fallback: fill remaining slots from manager's peers' subordinates
+    if (picked.length < 2) {
+      const pickedSet = new Set([user.id, ...picked.map((p) => p.evaluateeId)]);
+      const fallback = buildFallbackPeerPool(user.id, pickedSet);
+      const shuffledFallback = seededShuffle(fallback, userSeed + 1);
+
+      for (let i = 0; i < Math.min(2 - picked.length, shuffledFallback.length); i++) {
+        picked.push({
+          evaluatorId: user.id,
+          evaluateeId: shuffledFallback[i],
+          isFallback: true,
+        });
+      }
     }
+
+    assignments.push(...picked);
   }
 
   return assignments;
@@ -172,4 +186,18 @@ export function getPeerEvaluators(
   return assignments
     .filter((a) => a.evaluateeId === userId)
     .map((a) => a.evaluatorId);
+}
+
+/** Check if a peer assignment was made via fallback rule */
+export function isFallbackAssignment(
+  evaluatorId: string,
+  evaluateeId: string,
+  assignments: PeerAssignment[]
+): boolean {
+  return assignments.some(
+    (a) =>
+      a.evaluatorId === evaluatorId &&
+      a.evaluateeId === evaluateeId &&
+      a.isFallback === true
+  );
 }

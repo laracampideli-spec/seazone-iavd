@@ -16,7 +16,7 @@ import {
   saveManagerOverrides,
 } from "@/lib/db";
 import { getAllUsers, findUser, getPeerPool, getManager, setManagerOverrides, getManagerOverrides } from "@/lib/org-tree";
-import { getPeersToEvaluate, type PeerAssignment } from "@/lib/peer-assignment";
+import { getPeersToEvaluate, isFallbackAssignment, type PeerAssignment } from "@/lib/peer-assignment";
 import { Evaluation, evaluationTypeLabels, EvaluationType } from "@/lib/types";
 import AppShell from "@/components/app-shell";
 import {
@@ -339,11 +339,19 @@ export default function GestaoPage() {
                           {personPeers.map((peerId) => {
                             const peer = findUser(peerId);
                             const isChanging = changingPeer?.evaluatorId === person.id && changingPeer?.oldEvaluateeId === peerId;
+                            const isFallback = isFallbackAssignment(person.id, peerId, peerAssignments);
 
                             return (
                               <div key={peerId} className="flex items-center justify-between bg-gray-50 rounded-lg p-3">
                                 <div>
-                                  <p className="text-sm font-medium text-gray-900">{peer?.name || peerId}</p>
+                                  <p className="text-sm font-medium text-gray-900 flex items-center gap-2">
+                                    {peer?.name || peerId}
+                                    {isFallback && (
+                                      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700" title="Atribuído via regra de fallback: liderado de par da liderança">
+                                        fallback
+                                      </span>
+                                    )}
+                                  </p>
                                   <p className="text-xs text-gray-500">{peer?.cargo} · {peer?.sector}</p>
                                 </div>
                                 {isChanging ? (
