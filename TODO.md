@@ -18,7 +18,7 @@ Backlog de melhorias e correções para a plataforma de Avaliação de Desempenh
 | 10 | Funcionamento do sistema de quem avalia quem | ⬚ Pendente |
 | 11 | Visualização de histórico para observar evolução | ⬚ Pendente |
 | 12 | Acompanhar liderados que finalizaram avaliações (gestão de preenchimento) | ⬚ Pendente |
-| 13 | Calculadora de nota final ponderada por critério | ⬚ Pendente |
+| 13 | Calculadora de nota final ponderada por critério | ✅ Concluído |
 
 ## Detalhes
 
