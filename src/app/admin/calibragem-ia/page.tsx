@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { toast } from "sonner";
 import { useAuth } from "@/lib/auth-context";
 import { canManageQuestions } from "@/lib/permissions";
 import { getQuestions } from "@/lib/store";
@@ -104,6 +105,10 @@ export default function CalibracgemIAPage() {
         }),
       });
       const data = await res.json();
+
+      if (data._source === "fallback") {
+        toast.warning("IA indisponível — resposta automática. Resultados podem ser menos precisos.");
+      }
 
       const aiMsg: ChatMessage = {
         id: `msg_${Date.now()}`,

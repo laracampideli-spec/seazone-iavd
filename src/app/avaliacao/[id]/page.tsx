@@ -1,13 +1,16 @@
 "use client";
 
-import { useEffect, useState, useRef, useCallback, use } from "react";
+import { useEffect, useState, useRef, useCallback, use, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { Question, Evaluation, Answer, EvaluationType, evaluationTypeLabels, evaluationTypeColors } from "@/lib/types";
 import { getQuestions } from "@/lib/store";
 import { fetchEvaluation, upsertEvaluation } from "@/lib/db";
 import { useAuth } from "@/lib/auth-context";
 import { findUser } from "@/lib/org-tree";
 import AppShell from "@/components/app-shell";
+import ScorePreview from "@/components/score-preview";
+import { defaultQuestions } from "@/data/questions";
 import {
   ChevronLeft,
   CheckCircle2,
@@ -89,6 +92,19 @@ export default function AvaliacaoPage({
 
   useEffect(() => {
     evaluationRef.current = evaluation;
+  }, [evaluation]);
+
+  // Precomputed helpers for ScorePreview
+  const questionIds = defaultQuestions.map((q) => q.id);
+  const questionLabelsMap = Object.fromEntries(defaultQuestions.map((q) => [q.id, q.title]));
+
+  const previewScores = useMemo(() => {
+    if (!evaluation) return {};
+    const map: Record<string, number | null> = {};
+    for (const answer of evaluation.answers) {
+      map[answer.questionId] = answer.score;
+    }
+    return map;
   }, [evaluation]);
 
   const debouncedSave = useCallback((updated: Evaluation) => {
@@ -239,8 +255,9 @@ export default function AvaliacaoPage({
         }
         const parsed = typeof content === "string" ? JSON.parse(content) : content;
         feedbackItems = parsed.feedback || [];
-        if (parsed._source === "fallback") {
+        if (data._source === "fallback" || parsed._source === "fallback") {
           setUsingFallback(true);
+          toast.warning("IA indisponível — análise realizada por regras automáticas. Resultados podem ser menos precisos.");
         } else {
           setUsingFallback(false);
         }
@@ -254,6 +271,7 @@ export default function AvaliacaoPage({
           }
         } catch {
           setAnalysisError("Não foi possível interpretar a resposta da IA. Tente novamente.");
+          toast.error("Não foi possível interpretar a resposta da IA.");
           setHasAnalyzed(false);
           return;
         }
@@ -269,7 +287,7 @@ export default function AvaliacaoPage({
       setHasAnalyzed(true);
     } catch (err) {
       console.error("AI analysis error:", err);
-      alert("Erro ao analisar com a IA. Tente novamente.");
+      toast.error("Erro ao analisar com a IA. Tente novamente.");
     } finally {
       setIsAnalyzing(false);
     }
@@ -286,13 +304,13 @@ export default function AvaliacaoPage({
     });
 
     if (!allValid) {
-      alert("Todas as perguntas precisam ter conceito. Conceitos diferentes de C precisam de justificativa (mínimo 100 caracteres).");
+      toast.error("Todas as perguntas precisam ter conceito. Conceitos diferentes de C precisam de justificativa (mínimo 100 caracteres).");
       return;
     }
 
     // Enforce AI analysis
     if (!hasAnalyzed) {
-      alert("É necessário enviar para análise da IA antes de finalizar.");
+      toast.error("É necessário enviar para análise da IA antes de finalizar.");
       return;
     }
 
@@ -302,7 +320,7 @@ export default function AvaliacaoPage({
       return fb.suggestedGrade !== fb.currentGrade || fb.justificationQuality === "insufficient";
     }).length;
     if (unresolvedCount > 0) {
-      alert(`A IA tem ${unresolvedCount} objeção(ões) não resolvida(s). Revise as notas/justificativas ou clique em "Manter" para cada uma.`);
+      toast.error(`A IA tem ${unresolvedCount} objeção(ões) não resolvida(s). Revise as notas/justificativas ou clique em "Manter" para cada uma.`);
       return;
     }
 
@@ -667,6 +685,13 @@ export default function AvaliacaoPage({
           </div>
         )}
       </div>
+      {evaluation && (
+        <ScorePreview
+          scores={previewScores}
+          questionIds={questionIds}
+          questionLabels={questionLabelsMap}
+        />
+      )}
     </AppShell>
   );
 }

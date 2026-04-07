@@ -191,6 +191,7 @@ function fallbackResponse(body: DirectorChatRequest) {
         `**Nota 4:** Evidência de proatividade e autonomia acima do esperado\n` +
         `**Nota 5:** Impacto no time/organização com liderança clara\n\n` +
         `_Para um resumo mais detalhado, configure a chave da API Anthropic._`,
+      _source: "fallback",
     });
   }
 
@@ -210,5 +211,5 @@ function fallbackResponse(body: DirectorChatRequest) {
   ];
 
   const idx = Math.min(msgCount, questions.length - 1);
-  return NextResponse.json({ content: questions[idx] });
+  return NextResponse.json({ content: questions[idx], _source: "fallback" });
 }

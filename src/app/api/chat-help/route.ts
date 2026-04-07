@@ -72,40 +72,47 @@ function fallbackResponse(body: HelpRequest) {
   if (msg.includes("quem") && (msg.includes("avalia") || msg.includes("avaliar"))) {
     return NextResponse.json({
       content: "Você é avaliado por **4 perspectivas**: seu gestor, você mesmo (autoavaliação), 2 pares da sua equipe/nível e seus liderados (se tiver). Isso garante uma visão completa do seu desempenho.",
+      _source: "fallback",
     });
   }
 
   if (msg.includes("nota") && (msg.includes("funciona") || msg.includes("como"))) {
     return NextResponse.json({
       content: "As notas vão de **1 a 5**. A maioria das pessoas é **nota 3** (dentro do esperado — isso é bom!). Nota 4 exige evidências de proatividade e autonomia. Nota 5 é excepcional e rara. A IA sugere a nota, mas o RH calibra antes de liberar.",
+      _source: "fallback",
     });
   }
 
   if (msg.includes("par") || msg.includes("pares")) {
     return NextResponse.json({
       content: "**Pares** são colegas do mesmo nível. Se você é coordenador, seus pares são outros coordenadores de equipes irmãs. Se é analista, são os outros analistas da sua equipe. Cada pessoa avalia 2 pares.",
+      _source: "fallback",
     });
   }
 
   if (msg.includes("contestar") || msg.includes("discordar")) {
     return NextResponse.json({
       content: "Sim! Durante a avaliação, depois que a IA dar a nota, você pode **contestar** trazendo novos exemplos concretos. A IA reavalia se os argumentos forem fortes.",
+      _source: "fallback",
     });
   }
 
   if (msg.includes("quando") && msg.includes("nota")) {
     return NextResponse.json({
       content: "As notas ficam disponíveis na aba **\"Minhas Notas\"** depois que o RH concluir a calibragem e liberar. Você será notificado!",
+      _source: "fallback",
     });
   }
 
   if (msg.includes("valor") || msg.includes("critério") || msg.includes("pergunta")) {
     return NextResponse.json({
       content: "São **10 perguntas** em 5 valores Seazone:\n• **Sangue no Olho** — resiliência e comprometimento\n• **Foco em Fatos e Dados** — decisões baseadas em evidências\n• **Priorize e Simplifique** — foco e simplicidade\n• **Proatividade** — antecipação e melhoria\n• **AI First** — uso e disseminação de IA",
+      _source: "fallback",
     });
   }
 
   return NextResponse.json({
     content: `Boa pergunta! Se quiser, posso te ajudar com:\n• **Quem me avalia?**\n• **Como funciona a nota?**\n• **O que são pares?**\n• **Posso contestar?**\n\nOu fale com o RH para dúvidas mais específicas.`,
+    _source: "fallback",
   });
 }

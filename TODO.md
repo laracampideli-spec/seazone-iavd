@@ -9,12 +9,12 @@ Backlog de melhorias e correções para a plataforma de Avaliação de Desempenh
 | 1 | Migrar LLM de Claude para Gemini | ✅ Concluído |
 | 2 | Garantir visibilidade de erros para o usuário | ⬚ Pendente |
 | 3 | Suportar ~250 usuários simultâneos | ⬚ Pendente |
-| 4 | Validação de notas por nível hierárquico | 🔍 Em validação |
-| 5 | LLM julgar justificativa por nível + critério avaliado | 🔍 Em validação |
-| 6 | Feedback ao usuário sobre o que falta na justificativa | 🔍 Em validação |
+| 4 | Validação de notas por nível hierárquico | ✅ Concluído |
+| 5 | LLM julgar justificativa por nível + critério avaliado | ✅ Concluído |
+| 6 | Feedback ao usuário sobre o que falta na justificativa | ✅ Concluído |
 | 7 | Backup seguro dos dados sem exposição indevida | ⬚ Pendente |
-| 8 | Diferenciar claramente nota A (5) de B (4) | 🔍 Em validação |
-| 9 | Diferenciar claramente nota D (2) de E (1) | 🔍 Em validação |
+| 8 | Diferenciar claramente nota A (5) de B (4) | ✅ Concluído |
+| 9 | Diferenciar claramente nota D (2) de E (1) | ✅ Concluído |
 | 10 | Funcionamento do sistema de quem avalia quem | ⬚ Pendente |
 | 11 | Visualização de histórico para observar evolução | ⬚ Pendente |
 | 12 | Acompanhar liderados que finalizaram avaliações (gestão de preenchimento) | ⬚ Pendente |

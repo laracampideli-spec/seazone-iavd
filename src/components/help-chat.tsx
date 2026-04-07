@@ -9,6 +9,7 @@ interface ChatMsg {
   id: string;
   role: "user" | "assistant";
   content: string;
+  isFallback?: boolean;
 }
 
 const SYSTEM_CONTEXT = `Você é o assistente da plataforma IAVD (Avaliação de Desempenho com IA) da Seazone.
@@ -94,6 +95,7 @@ export default function HelpChat() {
           id: `msg_${Date.now()}_ai`,
           role: "assistant",
           content: data.content,
+          isFallback: data._source === "fallback",
         },
       ]);
     } catch {
@@ -190,16 +192,23 @@ export default function HelpChat() {
                     <User className="w-3 h-3 text-gray-500" />
                   )}
                 </div>
-                <div
-                  className={`max-w-[80%] px-3 py-2 rounded-xl text-sm leading-relaxed ${
-                    msg.role === "assistant"
-                      ? "bg-gray-50 text-gray-800"
-                      : "bg-primary text-white"
-                  }`}
-                  dangerouslySetInnerHTML={{
-                    __html: formatChatContent(msg.content),
-                  }}
-                />
+                <div className="max-w-[80%] flex flex-col gap-0.5">
+                  <div
+                    className={`px-3 py-2 rounded-xl text-sm leading-relaxed ${
+                      msg.role === "assistant"
+                        ? "bg-gray-50 text-gray-800"
+                        : "bg-primary text-white"
+                    }`}
+                    dangerouslySetInnerHTML={{
+                      __html: formatChatContent(msg.content),
+                    }}
+                  />
+                  {msg.isFallback && (
+                    <span className="text-[10px] text-gray-400 pl-1">
+                      ⚠ Resposta automática — IA indisponível
+                    </span>
+                  )}
+                </div>
               </div>
             ))}
 
