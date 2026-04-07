@@ -66,6 +66,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 Minhas Notas
               </a>
               <a
+                href="/calculadora"
+                className="text-white/80 hover:text-white transition text-sm font-medium"
+              >
+                Calculadora
+              </a>
+              <a
                 href="/resultados"
                 className="text-white/80 hover:text-white transition text-sm font-medium"
               >
