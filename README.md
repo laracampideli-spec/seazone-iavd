@@ -1,5 +1,7 @@
 # IAVD — Avaliação de Desempenho com IA
 
+> **Repositório migrado para a organização Seazone:** [seazone-tech/seazone-iavd](https://github.com/seazone-tech/seazone-iavd)
+
 Plataforma de avaliação de desempenho 360 com IA da Seazone.
 
 ## Stack
