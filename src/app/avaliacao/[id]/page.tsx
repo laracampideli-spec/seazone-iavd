@@ -15,6 +15,7 @@ import {
   Loader2,
   Send,
   RefreshCw,
+  AlertTriangle,
 } from "lucide-react";
 
 // Mapeamento: nota interna 1-5 ↔ conceito A-E (A=melhor, E=pior)
@@ -51,7 +52,19 @@ interface AIFeedbackItem {
   currentGrade: string;
   suggestedGrade: string;
   reasoning: string;
+  missingElements?: string[];
+  justificationQuality?: "insufficient" | "adequate";
 }
+
+const MISSING_ELEMENT_LABELS: Record<string, string> = {
+  exemplo_concreto: "Falta: exemplo concreto",
+  resultado_mensuravel: "Falta: resultado mensurável",
+  frequencia: "Falta: indicar frequência",
+  padrao_consistente: "Falta: padrão consistente",
+  impacto_no_nivel: "Falta: impacto esperado para o nível",
+  comparacao_nivel: "Falta: comparar com expectativa do nível",
+  visibilidade_restrita: "Nota: visibilidade pode ser limitada",
+};
 
 export default function AvaliacaoPage({
   params,
@@ -66,6 +79,9 @@ export default function AvaliacaoPage({
   const [aiFeedback, setAiFeedback] = useState<Record<string, AIFeedbackItem>>({});
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [hasAnalyzed, setHasAnalyzed] = useState(false);
+  const [resolvedByUser, setResolvedByUser] = useState<Set<string>>(new Set());
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [usingFallback, setUsingFallback] = useState(false);
 
   // Debounced auto-save
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -207,6 +223,7 @@ export default function AvaliacaoPage({
           evaluatorSector: currentUser?.sector || "",
           evaluateeSector: employee?.sector || "",
           evaluateeCargo: employee?.cargo || "",
+          evaluateeRole: employee?.role || "",
         }),
       });
 
@@ -222,6 +239,11 @@ export default function AvaliacaoPage({
         }
         const parsed = typeof content === "string" ? JSON.parse(content) : content;
         feedbackItems = parsed.feedback || [];
+        if (parsed._source === "fallback") {
+          setUsingFallback(true);
+        } else {
+          setUsingFallback(false);
+        }
       } catch {
         console.error("Failed to parse AI feedback as JSON:", data.content);
         // Try regex extraction as last resort
@@ -230,7 +252,11 @@ export default function AvaliacaoPage({
           if (jsonMatch) {
             feedbackItems = JSON.parse(jsonMatch[0]).feedback || [];
           }
-        } catch { /* give up */ }
+        } catch {
+          setAnalysisError("Não foi possível interpretar a resposta da IA. Tente novamente.");
+          setHasAnalyzed(false);
+          return;
+        }
       }
 
       const feedbackMap: Record<string, AIFeedbackItem> = {};
@@ -261,6 +287,22 @@ export default function AvaliacaoPage({
 
     if (!allValid) {
       alert("Todas as perguntas precisam ter conceito. Conceitos diferentes de C precisam de justificativa (mínimo 100 caracteres).");
+      return;
+    }
+
+    // Enforce AI analysis
+    if (!hasAnalyzed) {
+      alert("É necessário enviar para análise da IA antes de finalizar.");
+      return;
+    }
+
+    // Enforce resolution of AI objections
+    const unresolvedCount = Object.entries(aiFeedback).filter(([qId, fb]) => {
+      if (resolvedByUser.has(qId)) return false;
+      return fb.suggestedGrade !== fb.currentGrade || fb.justificationQuality === "insufficient";
+    }).length;
+    if (unresolvedCount > 0) {
+      alert(`A IA tem ${unresolvedCount} objeção(ões) não resolvida(s). Revise as notas/justificativas ou clique em "Manter" para cada uma.`);
       return;
     }
 
@@ -444,29 +486,82 @@ export default function AvaliacaoPage({
 
                       {/* AI feedback inline */}
                       {feedback && (() => {
-                        const agrees = feedback.suggestedGrade === feedback.currentGrade;
+                        const gradeAgrees = feedback.suggestedGrade === feedback.currentGrade;
+                        const justificationQuestioned = gradeAgrees && feedback.justificationQuality === "insufficient";
+                        const fullyAgrees = gradeAgrees && !justificationQuestioned;
                         return (
                           <div className={`mt-4 p-4 rounded-lg border ${
-                            agrees
+                            fullyAgrees
                               ? "bg-emerald-50 border-emerald-200"
+                              : justificationQuestioned
+                              ? "bg-yellow-50 border-yellow-300"
                               : "bg-amber-50 border-amber-200"
                           }`}>
                             <div className="flex items-start gap-2">
-                              <Bot className={`w-4 h-4 mt-0.5 shrink-0 ${agrees ? "text-emerald-600" : "text-amber-600"}`} />
+                              {justificationQuestioned ? (
+                                <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-yellow-500" />
+                              ) : (
+                                <Bot className={`w-4 h-4 mt-0.5 shrink-0 ${fullyAgrees ? "text-emerald-600" : "text-amber-600"}`} />
+                              )}
                               <div>
                                 <div className="flex items-center gap-2 mb-1">
-                                  <span className={`text-xs font-semibold ${agrees ? "text-emerald-700" : "text-amber-700"}`}>
-                                    {agrees ? "IA concorda" : "IA questiona"}
+                                  <span className={`text-xs font-semibold ${
+                                    fullyAgrees
+                                      ? "text-emerald-700"
+                                      : justificationQuestioned
+                                      ? "text-yellow-700"
+                                      : "text-amber-700"
+                                  }`}>
+                                    {fullyAgrees
+                                      ? "IA concorda"
+                                      : justificationQuestioned
+                                      ? "IA aceita nota, questiona justificativa"
+                                      : "IA questiona nota"}
                                   </span>
-                                  {!agrees && (
+                                  {!gradeAgrees && (
                                     <span className="text-xs px-2 py-0.5 bg-amber-200 text-amber-800 rounded-full font-medium">
                                       Sugere: {feedback.suggestedGrade}
                                     </span>
                                   )}
                                 </div>
-                                <p className={`text-sm leading-relaxed ${agrees ? "text-emerald-900" : "text-amber-900"}`}>
+                                <p className={`text-sm leading-relaxed ${
+                                  fullyAgrees
+                                    ? "text-emerald-900"
+                                    : justificationQuestioned
+                                    ? "text-yellow-900"
+                                    : "text-amber-900"
+                                }`}>
                                   {feedback.reasoning}
                                 </p>
+                                {feedback.missingElements && feedback.missingElements.length > 0 && (
+                                  <div className="flex flex-wrap gap-1.5 mt-2">
+                                    {feedback.missingElements.map((el) => (
+                                      <span key={el} className="text-[11px] px-2 py-0.5 bg-amber-100 border border-amber-300 text-amber-800 rounded-full font-medium">
+                                        {MISSING_ELEMENT_LABELS[el] || el}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                                {(justificationQuestioned || !gradeAgrees) && (
+                                  <>
+                                    {!resolvedByUser.has(questions[index]?.id || "") ? (
+                                      <button
+                                        onClick={() => setResolvedByUser(prev => new Set([...prev, questions[index]?.id || ""]))}
+                                        className="mt-2 text-xs text-amber-700 underline hover:no-underline"
+                                      >
+                                        {justificationQuestioned
+                                          ? "Manter minha justificativa e prosseguir"
+                                          : "Manter minha nota e prosseguir"}
+                                      </button>
+                                    ) : (
+                                      <p className="mt-2 text-xs text-gray-500 italic">
+                                        {justificationQuestioned
+                                          ? "Você optou por manter a justificativa atual."
+                                          : `Você optou por manter o conceito ${feedback.currentGrade}. IA sugeriu ${feedback.suggestedGrade}.`}
+                                      </p>
+                                    )}
+                                  </>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -529,11 +624,30 @@ export default function AvaliacaoPage({
                   </div>
                 )}
 
+                {analysisError && (
+                  <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm mb-4">
+                    <p className="font-medium">Erro na análise</p>
+                    <p className="mt-1">{analysisError}</p>
+                    <button onClick={() => { setAnalysisError(null); setHasAnalyzed(false); }} className="mt-2 text-xs underline">
+                      Tentar novamente
+                    </button>
+                  </div>
+                )}
+
+                {usingFallback && (
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-700 text-sm mb-4">
+                    Análise realizada por regras automáticas (IA indisponível). Resultados podem ser menos precisos.
+                  </div>
+                )}
+
                 <div className="flex gap-4">
                   <button
                     onClick={() => {
                       setHasAnalyzed(false);
                       setAiFeedback({});
+                      setResolvedByUser(new Set());
+                      setAnalysisError(null);
+                      setUsingFallback(false);
                     }}
                     className="flex-1 flex items-center justify-center gap-2 px-6 py-4 border-2 border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition text-base font-semibold"
                   >

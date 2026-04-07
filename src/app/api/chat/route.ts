@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { EvaluationType } from "@/lib/types";
+import { callGemini } from "@/lib/gemini";
+import { resolveCeoLevel, buildHolisticLevelContext, buildEvaluationTypeContext } from "@/lib/calibration-utils";
 
 interface ScaleLevel {
   score: number;
@@ -47,6 +49,7 @@ interface ChatRequest {
   evaluatorSector?: string;
   evaluateeSector?: string;
   evaluateeCargo?: string;
+  evaluateeRole?: string;
   allAnswers?: HolisticAnswer[];
 }
 
@@ -352,7 +355,7 @@ Regras:
 
 // ── HOLISTIC PROMPT ──
 
-function getHolisticPrompt(evaluationType: EvaluationType): string {
+function getHolisticPrompt(evaluationType: EvaluationType, levelContext: string): string {
   const typeContext: Record<EvaluationType, string> = {
     gestor: "Esta é uma avaliação do GESTOR sobre seu liderado.",
     auto: "Esta é uma AUTOAVALIAÇÃO. Autoavaliações tendem a ser infladas.",
@@ -383,17 +386,48 @@ JUSTIFICATIVAS ACEITÁVEIS devem ter:
 - Comportamentos observáveis: "tomou a iniciativa de...", "organizou reunião para..."
 - Frequência: "consistentemente", "nos últimos 3 meses", "sempre"
 
+EXIGÊNCIA DE EVIDÊNCIA POR NOTA:
+- Notas A e B: exigem exemplo concreto com resultado mensurável e frequência. Sem isso → insufficient.
+- Nota C: aceita descrição de comportamento consistente e esperado para o nível, sem exigir exemplo específico. Se descreve o padrão esperado, é adequate.
+- Notas D e E: aceitam descrição de comportamento negativo ou ausência — exemplo pontual é suficiente.
+
 ${CALIBRATION_RULES}
+${levelContext}
+
+DISTINÇÃO CRÍTICA A vs B:
+- Nota A (5) é RARA (5%). Nota B (4) bem descrita NÃO é A.
+- Para A: o impacto precisa ser TRANSFORMADOR — mudou a forma como a empresa/área opera, não apenas entregou algo excelente.
+- Para C-Level: A exige mudança de cultura, modelo de negócio ou operação da empresa INTEIRA. Construir uma ferramenta ou automação, por melhor que seja, é B.
+- Para Gerente/Diretor: A exige reestruturação com impacto mensurável que vai além da própria área.
+- Para Analista/Especialista: A exige algo que ninguém imaginava possível — criou solução que mudou o jogo da área inteira.
+- Se a justificativa descreve trabalho excelente mas dentro do esperado para o nível acima, é B, não A.
+
+DISTINÇÃO CRÍTICA D vs E:
+- E (1) = ausência, passividade, não fez. D (2) = tentou mas com dependência constante.
+- REGRA DE PRESUNÇÃO: qualquer descrição de ação, mesmo sem resultado mencionado → D, não E. Ausência de resultado ≠ ausência de ação.
+- E (1) EXIGE verbos de ausência explícita: "não fez", "desistiu", "ignorou", "ficou parado", "não havia o que fazer", "transferiu para outro". Sem esses marcadores → D.
+
+COERÊNCIA CRITÉRIO × JUSTIFICATIVA:
+- Verifique se o CONTEÚDO da justificativa realmente fala sobre o CRITÉRIO avaliado.
+- Se a justificativa descreve comportamento de outro critério (ex: fala de colaboração no campo de organização), QUESTIONE mesmo que o texto seja bem escrito.
+- Exemplo: justificativa sobre "boa relação com colegas" no critério "Entregas de Valor" deve ser questionada — o texto não aborda entregas.
 
 REGRAS DE RESPOSTA:
+- Você PODE sugerir nota acima, mas compare com "O que é esperado (nota 3)" da CALIBRAGEM POR NÍVEL. Se o comportamento descrito cabe na expectativa de nota 3 para aquele nível, mantenha C — mesmo com exemplo concreto e resultado (exemplo + resultado É o esperado para Analista). Para sugerir B, o comportamento precisa superar explicitamente a expectativa de nota 3 do nível. Na dúvida, SEMPRE mantenha.
 - Retorne APENAS JSON válido, sem markdown, sem texto antes ou depois
-- Formato: { "feedback": [{ "questionId": "v1_q1", "currentGrade": "B", "suggestedGrade": "C", "reasoning": "..." }] }
+- Formato: { "feedback": [{ "questionId": "c1_sangue", "currentGrade": "B", "suggestedGrade": "C", "reasoning": "...", "missingElements": ["exemplo_concreto"], "justificationQuality": "insufficient" }] }
+- justificationQuality: usar "insufficient" quando suggestedGrade === currentGrade MAS a justificativa for completamente vaga/subjetiva (ex: "é bom", "é dedicado") ou fora do critério. Para nota C, descrição de comportamento consistente e esperado para o nível é adequate — não exige exemplo específico.
+- missingElements possíveis: ["exemplo_concreto", "resultado_mensuravel", "frequencia", "padrao_consistente", "impacto_no_nivel", "comparacao_nivel", "visibilidade_restrita"]. Incluir quando suggestedGrade != currentGrade ou justificativa insuficiente.
 - Inclua feedback para TODAS as perguntas com conceito diferente de C
 - Se a justificativa for vaga, genérica ou subjetiva: SEMPRE questione, MESMO que o conceito pareça adequado. Diga exatamente o que falta (ex: "A justificativa 'é legal' não descreve nenhum comportamento observável. Traga um exemplo concreto de quando essa pessoa demonstrou [competência]")
-- Se concordar E a justificativa for boa: suggestedGrade = currentGrade
-- Se discordar OU justificativa ruim: suggestedGrade = o que sugere, reasoning explica
+- Se concordar com nota E justificativa boa: suggestedGrade = currentGrade (omitir justificationQuality)
+- Se discordar com a NOTA: suggestedGrade = o que sugere, reasoning explica
+- Se concordar com a NOTA mas justificativa insuficiente (vaga, fora do critério, sem exemplos): suggestedGrade = currentGrade, justificationQuality = "insufficient", missingElements preenchido — INCLUIR este item no feedback obrigatoriamente
 - Para conceito C: questione se TODAS forem C ou se a justificativa for inaceitável
-- Máximo 100 palavras por reasoning
+- QUANDO DISCORDAR: seja INSTRUTIVO, não imperativo. O reasoning deve ajudar o avaliador a entender a diferença e melhorar. Use este formato compacto:
+  → "Você escreveu: '[trecho curto]'. Isso sustenta nota [sugerida] porque [razão em 1 frase]. Para nota [dada pelo avaliador], esperaríamos algo como: '[exemplo concreto curto no contexto do avaliador]'."
+  NÃO repita regras genéricas. NÃO diga "é necessário fornecer exemplos". MOSTRE o que um bom exemplo seria.
+- Máximo 80 palavras por reasoning — seja direto e útil, não prolixo
 - Reasoning em português (pt-BR)
 - A DECISÃO FINAL é do avaliador — você apenas analisa e sugere
 - Uma pessoa pode usar o MESMO exemplo em múltiplas perguntas — isso é válido`;
@@ -415,10 +449,11 @@ function buildMessages(body: ChatRequest) {
     evaluatorSector,
     evaluateeSector,
     evaluateeCargo,
+    evaluateeRole,
   } = body;
 
   let systemPrompt: string;
-  if (mode === "holistic") systemPrompt = getHolisticPrompt(evaluationType);
+  if (mode === "holistic") systemPrompt = getHolisticPrompt(evaluationType, "");
   else if (mode === "challenge") systemPrompt = getChallengePrompt(evaluationType, chosenScore ?? 3);
   else if (mode === "score") systemPrompt = getScorePrompt(evaluationType);
   else if (mode === "contest") systemPrompt = getContestPrompt(evaluationType);
@@ -433,6 +468,11 @@ function buildMessages(body: ChatRequest) {
 
   // Holistic mode: build context from all answers
   if (mode === "holistic" && body.allAnswers) {
+    const ceoLevel = resolveCeoLevel(evaluateeCargo || "", evaluateeRole || "");
+    const levelContext = buildHolisticLevelContext(ceoLevel, body.allAnswers);
+    const evalTypeContext = buildEvaluationTypeContext(evaluationType);
+    systemPrompt = getHolisticPrompt(evaluationType, levelContext);
+
     const gradeMap: Record<number, string> = { 5: "A", 4: "B", 3: "C", 2: "D", 1: "E" };
     // Group by category
     const byCategory: Record<string, typeof body.allAnswers> = {};
@@ -444,6 +484,8 @@ function buildMessages(body: ChatRequest) {
     let holisticContext = `CONTEXTO DA AVALIAÇÃO:
 - Tipo: ${typeLabels[evaluationType]}
 - Colaborador avaliado: ${employeeName}${evaluateeCargo ? ` (${evaluateeCargo})` : ""}${evaluateeSector ? ` — Setor: ${evaluateeSector}` : ""}${evaluatorSector ? `\n- Setor do avaliador: ${evaluatorSector}` : ""}
+- Nível hierárquico: ${ceoLevel}
+${evalTypeContext}
 
 TODAS AS RESPOSTAS (${body.allAnswers.length} perguntas):
 `;
@@ -519,7 +561,7 @@ ${question.scale.map((s) => `  Nota ${s.score} (${s.label}): ${s.description}\n 
 
 export async function POST(req: NextRequest) {
   const body: ChatRequest = await req.json();
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY;
 
   if (!apiKey || apiKey === "sua-chave-aqui") {
     return fallbackResponse(body);
@@ -528,31 +570,14 @@ export async function POST(req: NextRequest) {
   try {
     const { systemPrompt, messages } = buildMessages(body);
 
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: body.mode === "holistic" ? 2000 : 600,
-        system: systemPrompt,
-        messages,
-      }),
+    const content = await callGemini({
+      systemPrompt,
+      messages,
+      maxOutputTokens: body.mode === "holistic" ? 8192 : 600,
+      apiKey,
+      jsonMode: body.mode === "holistic",
     });
-
-    if (!response.ok) {
-      console.error("Anthropic API error:", response.status);
-      return fallbackResponse(body);
-    }
-
-    const data = await response.json();
-    const content =
-      data.content?.[0]?.text || "Desculpe, não consegui gerar uma resposta.";
-
-    return NextResponse.json({ content });
+    return NextResponse.json({ content, _source: "ai" });
   } catch (error) {
     console.error("Chat API error:", error);
     return fallbackResponse(body);
@@ -590,7 +615,7 @@ function fallbackResponse(body: ChatRequest) {
           reasoning: `Todas (ou quase todas) as respostas são C. Isso pode indicar que a avaliação foi feita sem reflexão profunda. Há alguma competência em que ${employeeName} se destaca positivamente ou precisa melhorar? Considere se realmente não há diferenças entre as competências.`,
         });
       }
-      return NextResponse.json({ content: JSON.stringify({ feedback }) });
+      return NextResponse.json({ content: JSON.stringify({ feedback }), _source: "fallback" });
     }
 
     for (const ans of body.allAnswers) {
@@ -668,7 +693,7 @@ function fallbackResponse(body: ChatRequest) {
       }
     }
 
-    return NextResponse.json({ content: JSON.stringify({ feedback }) });
+    return NextResponse.json({ content: JSON.stringify({ feedback }), _source: "fallback" });
   }
 
   const userMessages = chatHistory.filter((m) => m.role === "user");
@@ -737,7 +762,7 @@ function fallbackResponse(body: ChatRequest) {
       response += `Para nota ${above.score}, seria necessário: "${above.description}"`;
     }
 
-    return NextResponse.json({ content: response });
+    return NextResponse.json({ content: response, _source: "fallback" });
   }
 
   if (mode === "contest") {
@@ -753,6 +778,7 @@ function fallbackResponse(body: ChatRequest) {
           `O exemplo que você trouxe agora é relevante — especialmente a parte sobre autonomia. Reavaliando:\n\n` +
           `**Nota: 4 — Acima do esperado**\n\n` +
           `Se ${employeeName} faz isso de forma consistente e sem demandar acompanhamento, a nota 4 é justa.`,
+        _source: "fallback",
       });
     }
 
@@ -765,6 +791,7 @@ function fallbackResponse(body: ChatRequest) {
           `• **Consistência**: acontece sempre ou foi um episódio?\n` +
           `• **Impacto além do escopo**: eleva o nível de outros?\n\n` +
           `Se tiver evidência nesses 3 pontos, posso reavaliar.`,
+        _source: "fallback",
       });
     }
 
@@ -776,6 +803,7 @@ function fallbackResponse(body: ChatRequest) {
         `• **Evidência de autonomia**\n` +
         `• **Impacto mensurável**\n\n` +
         `Tem algum fato novo?`,
+      _source: "fallback",
     });
   }
 
@@ -790,16 +818,19 @@ function fallbackResponse(body: ChatRequest) {
       if (isVague) {
         return NextResponse.json({
           content: `Você deu conceito **${grade}** para **${employeeName}**. A maioria das pessoas é conceito C (dentro do esperado).\n\nPreciso de **exemplos concretos e recentes** que justifiquem esse conceito. O que aconteceu nos últimos 6 meses que levou a essa avaliação?`,
+          _source: "fallback",
         });
       }
 
       if (chosenScore > 3) {
         return NextResponse.json({
           content: `Entendi sua justificativa. Conceito **${grade}** exige desempenho **acima** do esperado — não basta ser bom, precisa ser excepcional.\n\nPergunto: **${employeeName}** faz isso de forma **autônoma e consistente**? Ou foi algo pontual?`,
+          _source: "fallback",
         });
       } else {
         return NextResponse.json({
           content: `Entendi sua justificativa. Conceito **${grade}** indica desempenho **abaixo** do esperado — isso é significativo.\n\nConfirme: esse comportamento é **consistente** ou foi uma situação pontual?`,
+          _source: "fallback",
         });
       }
     }
@@ -812,16 +843,19 @@ function fallbackResponse(body: ChatRequest) {
       if (hasExamples && isDetailed) {
         return NextResponse.json({
           content: `Os exemplos que você trouxe são relevantes. Na minha análise, o conceito **${grade}** ${chosenScore > 3 ? "pode ser" : "é"} justificável com base nessas evidências.\n\nSe está seguro, pode **confirmar o conceito ${grade}**.`,
+          _source: "fallback",
         });
       }
 
       return NextResponse.json({
         content: `Na minha análise, os exemplos apresentados apontam mais para **conceito C** (dentro do esperado). Para conceito ${grade}, eu esperaria evidências mais concretas de ${chosenScore > 3 ? "proatividade e impacto acima do cargo" : "um padrão claro de comportamento negativo"}.\n\n**Você tem certeza que quer manter conceito ${grade}?** Se sim, pode confirmar.`,
+        _source: "fallback",
       });
     }
 
     return NextResponse.json({
       content: `Entendido. A decisão é sua. Se está ciente e quer manter conceito **${grade}**, pode **confirmar** agora.`,
+      _source: "fallback",
     });
   }
 
@@ -856,6 +890,7 @@ function fallbackResponse(body: ChatRequest) {
     const prompts = firstQuestions[evaluationType];
     return NextResponse.json({
       content: isVague ? prompts.vague : prompts.detailed,
+      _source: "fallback",
     });
   }
 
@@ -866,6 +901,7 @@ function fallbackResponse(body: ChatRequest) {
           `Ponto importante: nas respostas anteriores, foi mencionado que ${employeeName} precisa de acompanhamento da liderança. ` +
           `Isso é consistente com o que você está descrevendo aqui?\n\n` +
           `Quando estiver pronto, clique em **"Receber nota da IA"**.`,
+        _source: "fallback",
       });
     }
 
@@ -874,10 +910,12 @@ function fallbackResponse(body: ChatRequest) {
         `Último ponto: com que **frequência** isso acontece? ` +
         `É o comportamento padrão de ${employeeName} ou foi algo pontual?\n\n` +
         `Quando estiver pronto, clique em **"Receber nota da IA"**.`,
+      _source: "fallback",
     });
   }
 
   return NextResponse.json({
     content: `Tenho contexto suficiente. Clique em **"Receber nota da IA"** para eu consolidar minha avaliação.`,
+    _source: "fallback",
   });
 }

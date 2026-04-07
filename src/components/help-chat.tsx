@@ -72,8 +72,6 @@ export default function HelpChat() {
     setIsTyping(true);
 
     try {
-      const apiKey = process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY;
-
       // Try API, fallback to rule-based
       const res = await fetch("/api/chat-help", {
         method: "POST",
