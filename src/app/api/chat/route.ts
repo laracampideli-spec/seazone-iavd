@@ -577,6 +577,27 @@ export async function POST(req: NextRequest) {
       apiKey,
       jsonMode: body.mode === "holistic",
     });
+
+    if (body.mode === "holistic") {
+      // Validate and re-serialize holistic JSON on the server so the client
+      // always receives a clean, parseable string — or gets the rule-based fallback.
+      let parsed: unknown = null;
+      try {
+        const clean = content.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+        parsed = JSON.parse(clean);
+      } catch {
+        try {
+          const match = content.match(/\{[\s\S]*"feedback"[\s\S]*\}/);
+          if (match) parsed = JSON.parse(match[0]);
+        } catch { /* fall through */ }
+      }
+      if (!parsed) {
+        console.error("Holistic parse failed, using fallback. Raw (first 300):", content.substring(0, 300));
+        return fallbackResponse(body);
+      }
+      return NextResponse.json({ content: JSON.stringify(parsed), _source: "ai" });
+    }
+
     return NextResponse.json({ content, _source: "ai" });
   } catch (error) {
     console.error("Chat API error:", error);
