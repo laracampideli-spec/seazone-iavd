@@ -2,18 +2,29 @@ import { sectors } from "@/data/sectors";
 import { users, type UserData } from "@/data/users";
 import type { Role, User } from "./auth-types";
 
-// Lookups (built once, cached)
-const sectorByName = new Map(sectors.map((s) => [s.name, s]));
-const usersByName = new Map(users.map((u) => [u.name, u]));
-const userById = new Map(users.map((u) => [u.id, u]));
+// Dismissed employees have email: null (Google account deactivated).
+const isActive = (u: UserData) => u.email !== null;
 
-// Sectors where a person is Responsável (by user name)
+// ALL users (including dismissed) — needed for correct hierarchy computation.
+// Dismissed managers must stay in the tree so their reports get the right grandparent.
+const allUsersByName = new Map(users.map((u) => [u.name, u]));
+const allUserById = new Map(users.map((u) => [u.id, u]));
+
+// Active users only — for public-facing lookups (getAllUsers, searchUsers, etc.)
+const activeUsers = users.filter(isActive);
+const usersByName = new Map(activeUsers.map((u) => [u.name, u]));
+const userById = new Map(activeUsers.map((u) => [u.id, u]));
+
+// Sectors where a person is Responsável (uses ALL users so dismissed managers' sectors are preserved)
 const responsavelSectors = new Map<string, string[]>();
 for (const s of sectors) {
   const list = responsavelSectors.get(s.responsavelName) || [];
   list.push(s.name);
   responsavelSectors.set(s.responsavelName, list);
 }
+
+// Lookups built once
+const sectorByName = new Map(sectors.map((s) => [s.name, s]));
 
 // Children sectors by parent
 const childSectors = new Map<string, string[]>();
@@ -36,37 +47,52 @@ export function getManagerOverrides(): Record<string, string> {
   return managerOverrides;
 }
 
-/** Get the manager (Responsável) of a person's sector */
+/**
+ * Walk up the sector tree to find the first ACTIVE responsável above a given sector.
+ * Used when the direct responsável of a sector is dismissed.
+ */
+function findActiveResponsavelAbove(sectorName: string, excludeId: string): UserData | null {
+  let current = sectorByName.get(sectorName);
+  const visited = new Set<string>();
+  while (current?.parentSector && !visited.has(current.name)) {
+    visited.add(current.name);
+    const parent = sectorByName.get(current.parentSector);
+    if (!parent) break;
+    const resp = allUsersByName.get(parent.responsavelName);
+    if (resp && resp.id !== excludeId && isActive(resp)) return resp;
+    current = parent;
+  }
+  return null;
+}
+
+/** Get the manager (Responsável) of a person's sector — skips dismissed managers */
 export function getManager(userId: string): UserData | null {
   // Check override first
   if (managerOverrides[userId]) {
-    return userById.get(managerOverrides[userId]) || null;
+    const override = allUserById.get(managerOverrides[userId]);
+    if (override && isActive(override)) return override;
   }
 
-  const user = userById.get(userId);
+  const user = allUserById.get(userId);
   if (!user) return null;
 
   const sector = sectorByName.get(user.sector);
   if (!sector) return null;
 
-  const manager = usersByName.get(sector.responsavelName);
-  if (!manager || manager.id === userId) {
-    // If user IS the responsável, their manager is the responsável of the parent sector
-    if (sector.parentSector) {
-      const parentSector = sectorByName.get(sector.parentSector);
-      if (parentSector) {
-        const parentManager = usersByName.get(parentSector.responsavelName);
-        if (parentManager && parentManager.id !== userId) return parentManager;
-      }
-    }
-    return null;
+  const manager = allUsersByName.get(sector.responsavelName);
+
+  if (!manager || manager.id === userId || !isActive(manager)) {
+    // If user IS the responsável, or the responsável is dismissed,
+    // walk up the sector tree to find the first active ancestor.
+    return findActiveResponsavelAbove(user.sector, userId);
   }
+
   return manager;
 }
 
 /** Get all direct subordinates: people in sectors where userId is Responsável + responsáveis of child sectors */
 export function getSubordinates(userId: string): UserData[] {
-  const user = userById.get(userId);
+  const user = allUserById.get(userId);
   if (!user) return [];
 
   const managedSectors = responsavelSectors.get(user.name) || [];
@@ -74,8 +100,8 @@ export function getSubordinates(userId: string): UserData[] {
   const seen = new Set<string>();
 
   for (const sectorName of managedSectors) {
-    // People directly in this sector
-    for (const u of users) {
+    // Active people directly in this sector
+    for (const u of activeUsers) {
       if (u.sector === sectorName && u.id !== userId && !seen.has(u.id)) {
         subs.push(u);
         seen.add(u.id);
@@ -83,12 +109,13 @@ export function getSubordinates(userId: string): UserData[] {
     }
 
     // Responsáveis of child sectors (they report to this sector's responsável)
+    // Only include ACTIVE responsáveis
     const children = childSectors.get(sectorName) || [];
     for (const childName of children) {
       const childSector = sectorByName.get(childName);
       if (childSector) {
-        const resp = usersByName.get(childSector.responsavelName);
-        if (resp && resp.id !== userId && !seen.has(resp.id)) {
+        const resp = allUsersByName.get(childSector.responsavelName);
+        if (resp && resp.id !== userId && !seen.has(resp.id) && isActive(resp)) {
           subs.push(resp);
           seen.add(resp.id);
         }
@@ -103,7 +130,7 @@ export function getSubordinates(userId: string): UserData[] {
 export function getAllSubordinates(userId: string): UserData[] {
   const result: UserData[] = [];
   const visited = new Set<string>();
-  visited.add(userId); // prevent self-inclusion
+  visited.add(userId);
 
   function collect(id: string) {
     const direct = getSubordinates(id);
@@ -125,7 +152,7 @@ const ISOLATED_SECTORS = new Set(["Estagiários", "Jovens Talentos"]);
 
 /** Check if user is responsável of any sector */
 function isUserResponsavel(userId: string): boolean {
-  const user = userById.get(userId);
+  const user = allUserById.get(userId);
   if (!user) return false;
   return (responsavelSectors.get(user.name) || []).length > 0;
 }
@@ -136,16 +163,16 @@ function isUserResponsavel(userId: string): boolean {
  * - Non-responsável: peers = other people in the same sector (same team)
  */
 export function getPeerPool(userId: string): UserData[] {
-  const user = userById.get(userId);
+  const user = allUserById.get(userId);
   if (!user) return [];
 
-  // Isolated sectors: peers only within the same sector
+  // Isolated sectors: peers only within the same sector (active only)
   if (ISOLATED_SECTORS.has(user.sector)) {
-    return users.filter((u) => u.sector === user.sector && u.id !== userId);
+    return activeUsers.filter((u) => u.sector === user.sector && u.id !== userId);
   }
 
   if (isUserResponsavel(userId)) {
-    // Responsável: peers = other responsáveis of sibling sectors
+    // Responsável: peers = other active responsáveis of sibling sectors
     const sector = sectorByName.get(user.sector);
     if (!sector?.parentSector) return [];
 
@@ -156,8 +183,8 @@ export function getPeerPool(userId: string): UserData[] {
       if (ISOLATED_SECTORS.has(siblingName)) continue;
       const sib = sectorByName.get(siblingName);
       if (sib) {
-        const resp = usersByName.get(sib.responsavelName);
-        if (resp && resp.id !== userId) {
+        const resp = allUsersByName.get(sib.responsavelName);
+        if (resp && resp.id !== userId && isActive(resp)) {
           peers.push(resp);
         }
       }
@@ -165,8 +192,8 @@ export function getPeerPool(userId: string): UserData[] {
 
     return peers;
   } else {
-    // Non-responsável: peers = other non-responsável people in the same sector
-    return users.filter(
+    // Non-responsável: peers = other active non-responsável people in the same sector
+    return activeUsers.filter(
       (u) => u.sector === user.sector && u.id !== userId && !isUserResponsavel(u.id)
     );
   }
@@ -225,27 +252,27 @@ export function toUser(userData: UserData): User {
   };
 }
 
-/** Get all users as full User objects */
+/** Get all ACTIVE users as full User objects (dismissed employees excluded) */
 export function getAllUsers(): User[] {
-  return users.map(toUser);
+  return activeUsers.map(toUser);
 }
 
-/** Find user by ID */
+/** Find user by ID (active only) */
 export function findUser(userId: string): User | null {
   const data = userById.get(userId);
   return data ? toUser(data) : null;
 }
 
-/** Find user by name (exact match) */
+/** Find user by name (active only, exact match) */
 export function findUserByName(name: string): User | null {
   const data = usersByName.get(name);
   return data ? toUser(data) : null;
 }
 
-/** Search users by name (partial, case-insensitive) */
+/** Search users by name (active only, partial, case-insensitive) */
 export function searchUsers(query: string): User[] {
   const q = query.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  return users
+  return activeUsers
     .filter((u) => {
       const n = u.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
       return n.includes(q);

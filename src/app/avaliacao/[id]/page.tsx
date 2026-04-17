@@ -243,38 +243,49 @@ export default function AvaliacaoPage({
         }),
       });
 
+      if (!res.ok) {
+        console.error("API error response:", res.status, await res.text().catch(() => ""));
+        setUsingFallback(true);
+        toast.warning("IA indisponível — análise realizada por regras automáticas.");
+        setHasAnalyzed(true);
+        setIsAnalyzing(false);
+        return;
+      }
+
       const data = await res.json();
 
       // Parse response — expect JSON with feedback array
       let feedbackItems: AIFeedbackItem[] = [];
-      try {
-        let content = data.content;
-        // Strip markdown code fences if present
-        if (typeof content === "string") {
-          content = content.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
-        }
-        const parsed = typeof content === "string" ? JSON.parse(content) : content;
-        feedbackItems = parsed.feedback || [];
-        if (data._source === "fallback" || parsed._source === "fallback") {
-          setUsingFallback(true);
-          toast.warning("IA indisponível — análise realizada por regras automáticas. Resultados podem ser menos precisos.");
-        } else {
-          setUsingFallback(false);
-        }
-      } catch {
-        console.error("Failed to parse AI feedback as JSON:", data.content);
-        // Try regex extraction as last resort
+      let parseOk = false;
+
+      if (typeof data.content === "string") {
         try {
-          const jsonMatch = data.content.match(/\{[\s\S]*"feedback"[\s\S]*\}/);
-          if (jsonMatch) {
-            feedbackItems = JSON.parse(jsonMatch[0]).feedback || [];
+          const clean = data.content.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+          const parsed = JSON.parse(clean);
+          feedbackItems = parsed.feedback || [];
+          parseOk = true;
+          if (data._source === "fallback" || parsed._source === "fallback") {
+            setUsingFallback(true);
+            toast.warning("IA indisponível — análise realizada por regras automáticas. Resultados podem ser menos precisos.");
+          } else {
+            setUsingFallback(false);
           }
         } catch {
-          setAnalysisError("Não foi possível interpretar a resposta da IA. Tente novamente.");
-          toast.error("Não foi possível interpretar a resposta da IA.");
-          setHasAnalyzed(false);
-          return;
+          // Try regex extraction
+          try {
+            const match = data.content.match(/\{[\s\S]*"feedback"[\s\S]*\}/);
+            if (match) {
+              feedbackItems = JSON.parse(match[0]).feedback || [];
+              parseOk = true;
+            }
+          } catch { /* fall through */ }
         }
+      }
+
+      if (!parseOk) {
+        console.error("Could not parse AI response. data.content:", data.content);
+        setUsingFallback(true);
+        toast.warning("IA indisponível — análise realizada por regras automáticas. Resultados podem ser menos precisos.");
       }
 
       const feedbackMap: Record<string, AIFeedbackItem> = {};

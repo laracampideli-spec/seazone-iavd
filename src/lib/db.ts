@@ -328,3 +328,27 @@ export async function saveManagerOverrides(overrides: Record<string, string>): P
     .upsert({ key: "manager_overrides", value: JSON.stringify(overrides), updated_at: new Date().toISOString() });
   if (error) console.error("Error saving manager overrides:", error);
 }
+
+export interface CalibrationResult {
+  criteriaGrades: Record<string, string>; // questionId -> "A"|"B"|"C"|"D"|"E"
+  notes: string;
+  calibratedBy: string;
+  calibratedAt: string;
+}
+
+export async function fetchCalibrationResult(employeeId: string): Promise<CalibrationResult | null> {
+  const { data } = await supabase
+    .from("app_settings")
+    .select("value")
+    .eq("key", `calibration_result_${employeeId}`)
+    .maybeSingle();
+  if (!data?.value) return null;
+  try { return JSON.parse(data.value) as CalibrationResult; } catch { return null; }
+}
+
+export async function saveCalibrationResult(employeeId: string, result: CalibrationResult): Promise<void> {
+  const { error } = await supabase
+    .from("app_settings")
+    .upsert({ key: `calibration_result_${employeeId}`, value: JSON.stringify(result), updated_at: new Date().toISOString() });
+  if (error) throw error;
+}

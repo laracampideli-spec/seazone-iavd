@@ -8,7 +8,7 @@ interface GeminiMessage {
 
 interface GeminiCandidate {
   content?: {
-    parts?: { text?: string }[];
+    parts?: { text?: string; thought?: boolean }[];
   };
 }
 
@@ -67,7 +67,10 @@ export async function callGemini(params: {
     throw new Error(`Gemini API error: ${data.error.message}`);
   }
 
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  // Gemini 2.5 returns "thinking parts" (thought: true) before the actual content.
+  // Filter them out and take the first real content part.
+  const parts = data.candidates?.[0]?.content?.parts ?? [];
+  const text = parts.find((p) => !p.thought && p.text)?.text;
   if (!text) {
     throw new Error("Gemini returned empty response");
   }
